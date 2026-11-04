@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import {
-  DECK_PRESETS,
-  DEFAULT_DECK,
-  parseDeckString,
-  type VoteValue,
-} from '@shared/types';
+import { computed, onMounted, ref } from 'vue';
+import { DECK_PRESETS, DEFAULT_DECK, type VoteValue } from '@shared/types';
+import { loadCustomDecks, type CustomDeck } from '@/utils/storage';
 import PlayingCard from '@/components/atoms/PlayingCard.vue';
 import BaseButton from '@/components/atoms/BaseButton.vue';
+import DeckManagerPanel, {
+  type DeckModalMode,
+} from '@/components/organisms/DeckManagerPanel.vue';
 
 interface Props {
   selectedVote: VoteValue | null;
@@ -33,52 +32,51 @@ const activeDeck = computed(() =>
   props.deck && props.deck.length > 0 ? props.deck : [...DEFAULT_DECK]
 );
 
-const editingDeck = ref(false);
-const draftDeckInput = ref(activeDeck.value.join(', '));
-const newSingleCard = ref('');
+const isDeckModalOpen = ref(false);
+const deckModalMode = ref<DeckModalMode>('create');
+const customDecks = ref<CustomDeck[]>([]);
 
-watch(
-  activeDeck,
-  (val) => {
-    if (!editingDeck.value) {
-      draftDeckInput.value = val.join(', ');
-    }
-  },
-  { deep: true }
-);
+onMounted(() => {
+  customDecks.value = loadCustomDecks();
+});
 
-const draftCardsPreview = computed(() => parseDeckString(draftDeckInput.value));
-
-function openDeckEditor() {
-  draftDeckInput.value = activeDeck.value.join(', ');
-  editingDeck.value = true;
+function openCreateDeckModal() {
+  deckModalMode.value = 'create';
+  isDeckModalOpen.value = true;
 }
 
-function applyPreset(cards: VoteValue[]) {
-  draftDeckInput.value = cards.join(', ');
+function openManageDecksModal() {
+  deckModalMode.value = 'manage';
+  isDeckModalOpen.value = true;
 }
 
-function addChipCard() {
-  const clean = newSingleCard.value.trim().slice(0, 8);
-  if (!clean) return;
-  const current = draftCardsPreview.value;
-  if (!current.includes(clean)) {
-    draftDeckInput.value = [...current, clean].join(', ');
+function handleQuickDeckChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const deckId = target.value;
+  if (!deckId) return;
+
+  const custom = customDecks.value.find((d) => d.id === deckId);
+  if (custom) {
+    emit('updateDeck', custom.cards);
+    target.value = '';
+    return;
   }
-  newSingleCard.value = '';
-}
 
-function removeChipCard(cardToRemove: VoteValue) {
-  const filtered = draftCardsPreview.value.filter((c) => c !== cardToRemove);
-  if (filtered.length > 0) {
-    draftDeckInput.value = filtered.join(', ');
+  const preset = DECK_PRESETS.find((p) => p.id === deckId);
+  if (preset) {
+    emit('updateDeck', [...preset.cards]);
+    target.value = '';
   }
 }
 
-function saveDeckChanges() {
-  const parsed = parseDeckString(draftDeckInput.value);
-  emit('updateDeck', parsed);
-  editingDeck.value = false;
+function handleSelectDeckFromModal(payload: {
+  id: string;
+  name: string;
+  cards: VoteValue[];
+}) {
+  customDecks.value = loadCustomDecks();
+  emit('updateDeck', payload.cards);
+  isDeckModalOpen.value = false;
 }
 </script>
 
@@ -86,129 +84,93 @@ function saveDeckChanges() {
   <section
     class="w-full rounded-2xl border border-slate-800/90 bg-slate-900/80 backdrop-blur-md px-4 py-4 shadow-xl flex flex-col gap-4"
   >
-    <!-- Painel de Edicao do Baralho (Exclusivo do Host quando aberto) -->
-    <div
-      v-if="isHost && editingDeck"
-      class="rounded-xl bg-slate-950/90 border border-indigo-500/40 p-4 flex flex-col gap-3.5"
-    >
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <div class="flex flex-col">
-          <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">
-            Configurar Baralho da Sala
-          </span>
-          <span class="text-xs text-slate-400">
-            Escolha um preset rápido, clique nas cartas para remover ou digite valores separados por vírgula.
-          </span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <BaseButton size="sm" variant="primary" @click="saveDeckChanges">
-            Salvar Baralho ({{ draftCardsPreview.length }} cartas)
-          </BaseButton>
-          <BaseButton size="sm" variant="ghost" @click="editingDeck = false">
-            Cancelar
-          </BaseButton>
-        </div>
-      </div>
-
-      <!-- Presets Rapidos -->
-      <div class="flex flex-wrap items-center gap-1.5">
-        <span class="text-[11px] font-semibold text-slate-400 mr-1">Presets:</span>
-        <button
-          v-for="preset in DECK_PRESETS"
-          :key="preset.id"
-          type="button"
-          class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600/30 text-slate-200 border border-slate-700 hover:border-indigo-500/50 transition-colors cursor-pointer"
-          @click="applyPreset(preset.cards)"
-        >
-          {{ preset.label.split(' (')[0] }}
-        </button>
-      </div>
-
-      <!-- Chips interativos das cartas atuais + Adicionar carta avulsa -->
-      <div class="flex flex-wrap items-center gap-1.5">
-        <span
-          v-for="card in draftCardsPreview"
-          :key="card"
-          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/70 border border-indigo-500/40 text-xs font-bold text-indigo-200"
-        >
-          {{ card }}
-          <button
-            v-if="draftCardsPreview.length > 1"
-            type="button"
-            class="text-indigo-400 hover:text-rose-400 cursor-pointer leading-none"
-            title="Remover carta"
-            @click="removeChipCard(card)"
-          >
-            ×
-          </button>
-        </span>
-
-        <form class="inline-flex items-center gap-1" @submit.prevent="addChipCard">
-          <input
-            v-model="newSingleCard"
-            type="text"
-            maxlength="8"
-            placeholder="+ carta"
-            class="w-20 rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-          />
-          <button
-            type="submit"
-            class="text-xs px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 font-semibold cursor-pointer"
-          >
-            Add
-          </button>
-        </form>
-      </div>
-
-      <!-- Edicao livre em texto separado por virgula -->
-      <div class="flex flex-col gap-1">
-        <label class="text-[11px] font-medium text-slate-400">
-          Lista separada por vírgula:
-        </label>
-        <input
-          v-model="draftDeckInput"
-          type="text"
-          class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500"
-          placeholder="0, 1, 2, 3, 5, 8, 13, 21, ?, ☕"
-          @keydown.enter.prevent="saveDeckChanges"
-        />
-      </div>
-    </div>
-
     <!-- Mensagem Modo Espectador -->
     <div
       v-if="isSpectator"
-      class="flex items-center justify-between gap-2 py-1 text-sm text-slate-400 px-2"
+      class="flex flex-wrap items-center justify-between gap-2 py-1 text-sm text-slate-400 px-2"
     >
       <span>
         Você está no <strong class="text-slate-200">Modo Espectador</strong>. Desative-o no topo para votar.
       </span>
-      <button
-        v-if="isHost && !editingDeck"
-        type="button"
-        class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-        @click="openDeckEditor"
-      >
-        Editar Cartas do Baralho
-      </button>
+
+      <div v-if="isHost" class="flex flex-wrap items-center gap-2">
+        <select
+          class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+          @change="handleQuickDeckChange"
+        >
+          <option value="">Trocar baralho...</option>
+          <optgroup v-if="customDecks.length > 0" label="Meus Baralhos Salvos">
+            <option v-for="d in customDecks" :key="d.id" :value="d.id">
+              ★ {{ d.name }}
+            </option>
+          </optgroup>
+          <optgroup label="Baralhos Padrão">
+            <option v-for="p in DECK_PRESETS" :key="p.id" :value="p.id">
+              {{ p.label.split(' (')[0] }}
+            </option>
+          </optgroup>
+        </select>
+
+        <BaseButton
+          size="sm"
+          variant="secondary"
+          @click="openCreateDeckModal"
+        >
+          + Baralho
+        </BaseButton>
+
+        <button
+          type="button"
+          class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+          @click="openManageDecksModal"
+        >
+          Gerenciar Baralhos
+        </button>
+      </div>
     </div>
 
     <!-- Dock Normal de Cartas -->
     <div v-else class="flex flex-col items-center gap-3">
       <div class="flex flex-wrap items-center justify-between w-full px-2 gap-2">
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-2.5">
           <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Escolha sua carta ({{ activeDeck.length }} opções)
           </span>
-          <button
-            v-if="isHost && !editingDeck"
-            type="button"
-            class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-            @click="openDeckEditor"
-          >
-            Editar Cartas
-          </button>
+
+          <template v-if="isHost">
+            <select
+              class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+              @change="handleQuickDeckChange"
+            >
+              <option value="">Trocar baralho...</option>
+              <optgroup v-if="customDecks.length > 0" label="Meus Baralhos Salvos">
+                <option v-for="d in customDecks" :key="d.id" :value="d.id">
+                  ★ {{ d.name }}
+                </option>
+              </optgroup>
+              <optgroup label="Baralhos Padrão">
+                <option v-for="p in DECK_PRESETS" :key="p.id" :value="p.id">
+                  {{ p.label.split(' (')[0] }}
+                </option>
+              </optgroup>
+            </select>
+
+            <BaseButton
+              size="sm"
+              variant="secondary"
+              @click="openCreateDeckModal"
+            >
+              + Baralho
+            </BaseButton>
+
+            <button
+              type="button"
+              class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+              @click="openManageDecksModal"
+            >
+              Gerenciar Baralhos
+            </button>
+          </template>
         </div>
 
         <span v-if="selectedVote" class="text-xs text-indigo-300 font-medium">
@@ -233,5 +195,15 @@ function saveDeckChanges() {
         />
       </div>
     </div>
+
+    <!-- Modal de Baralho (mode='create' ou mode='manage') -->
+    <DeckManagerPanel
+      v-if="isHost"
+      :open="isDeckModalOpen"
+      :mode="deckModalMode"
+      @close="isDeckModalOpen = false"
+      @select-deck="handleSelectDeckFromModal"
+      @decks-updated="customDecks = $event"
+    />
   </section>
 </template>

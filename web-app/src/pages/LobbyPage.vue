@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import LobbyTemplate from '@/components/templates/LobbyTemplate.vue';
 import BaseButton from '@/components/atoms/BaseButton.vue';
 import BaseInput from '@/components/atoms/BaseInput.vue';
 import BaseBadge from '@/components/atoms/BaseBadge.vue';
+import DeckManagerPanel, {
+  type DeckModalMode,
+} from '@/components/organisms/DeckManagerPanel.vue';
 import {
   claimHostTabLock,
   clearHostRoomState,
@@ -13,16 +16,18 @@ import {
   getOrCreatePlayerId,
   getSavedPlayerName,
   listSavedHostRooms,
+  loadCustomDecks,
   saveHostRoomState,
   savePlayerName,
   saveSpectatorFlag,
+  type CustomDeck,
 } from '@/utils/storage';
 import {
   DECK_PRESETS,
   DEFAULT_DECK,
-  parseDeckString,
   type RoomState,
   type StoryTask,
+  type VoteValue,
 } from '@shared/types';
 
 const router = useRouter();
@@ -31,8 +36,23 @@ const hostName = ref(getSavedPlayerName());
 const initialTasksText = ref(
   'US-01: Autenticação OAuth\nUS-02: Tela de Dashboard\nUS-03: Exportação de Relatório'
 );
-const customDeckInput = ref(DEFAULT_DECK.join(', '));
-const selectedPresetId = ref('fibonacci');
+
+const customDecks = ref<CustomDeck[]>(loadCustomDecks());
+const selectedDeckId = ref<string>(
+  customDecks.value[0]?.id ?? DECK_PRESETS[0].id
+);
+const isDeckModalOpen = ref(false);
+const deckModalMode = ref<DeckModalMode>('create');
+
+function openCreateDeckModal() {
+  deckModalMode.value = 'create';
+  isDeckModalOpen.value = true;
+}
+
+function openManageDecksModal() {
+  deckModalMode.value = 'manage';
+  isDeckModalOpen.value = true;
+}
 
 const joinName = ref(getSavedPlayerName());
 const roomCodeInput = ref('');
@@ -41,21 +61,58 @@ const joinError = ref('');
 
 const savedHostRooms = ref<RoomState[]>([]);
 
+const allAvailableDecks = computed(() => {
+  const customItems = customDecks.value.map((d) => ({
+    id: d.id,
+    name: d.name,
+    cards: d.cards,
+    isCustom: true,
+  }));
+  const presetItems = DECK_PRESETS.map((p) => ({
+    id: p.id,
+    name: p.label.split(' (')[0],
+    cards: [...p.cards],
+    isCustom: false,
+  }));
+  return [...customItems, ...presetItems];
+});
+
+const activeSelectedDeck = computed(() => {
+  return (
+    allAvailableDecks.value.find((d) => d.id === selectedDeckId.value) ??
+    allAvailableDecks.value[0] ?? {
+      id: 'fibonacci',
+      name: 'Fibonacci',
+      cards: [...DEFAULT_DECK],
+      isCustom: false,
+    }
+  );
+});
+
 function refreshSavedHostRooms() {
   savedHostRooms.value = listSavedHostRooms();
 }
 
-onMounted(() => {
-  refreshSavedHostRooms();
-});
-
-function handlePresetChange(presetId: string) {
-  selectedPresetId.value = presetId;
-  const preset = DECK_PRESETS.find((p) => p.id === presetId);
-  if (preset) {
-    customDeckInput.value = preset.cards.join(', ');
+function handleDecksUpdated(updated: CustomDeck[]) {
+  customDecks.value = updated;
+  if (!allAvailableDecks.value.some((d) => d.id === selectedDeckId.value)) {
+    selectedDeckId.value = allAvailableDecks.value[0]?.id ?? 'fibonacci';
   }
 }
+
+function handleSelectDeckFromManager(payload: {
+  id: string;
+  name: string;
+  cards: VoteValue[];
+}) {
+  customDecks.value = loadCustomDecks();
+  selectedDeckId.value = payload.id;
+}
+
+onMounted(() => {
+  refreshSavedHostRooms();
+  customDecks.value = loadCustomDecks();
+});
 
 function handleCreateRoom() {
   const cleanName = hostName.value.trim();
@@ -86,7 +143,7 @@ function handleCreateRoom() {
   }));
 
   const firstTask = tasks[0];
-  const deck = parseDeckString(customDeckInput.value);
+  const deck = [...activeSelectedDeck.value.cards];
 
   const initialRoomState: RoomState = {
     roomId,
@@ -158,7 +215,7 @@ function handleJoinRoom() {
 
 <template>
   <LobbyTemplate>
-    <div class="w-full max-w-4xl flex flex-col items-center gap-10">
+    <div class="w-full max-w-4xl flex flex-col items-center gap-8">
       <!-- Hero Header -->
       <div class="flex flex-col items-center text-center gap-3 max-w-2xl">
         <BaseBadge tone="indigo" dot>
@@ -246,7 +303,7 @@ function handleJoinRoom() {
             </span>
             <h2 class="text-xl font-bold text-white">Criar Sala como Host</h2>
             <p class="text-xs text-slate-400">
-              Configure as tasks iniciais e personalize o baralho de cartas da sua equipe.
+              Escolha um dos seus baralhos salvos (ou um modelo padrão) e defina as tasks da sessão.
             </p>
           </div>
 
@@ -262,33 +319,73 @@ function handleJoinRoom() {
               :error="createError"
             />
 
-            <!-- Selecao e Edicao do Baralho -->
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-medium uppercase tracking-wider text-slate-400">
-                Baralho de Cartas (Presets ou Personalizado)
-              </label>
-              <div class="flex flex-wrap gap-1.5 mb-1">
-                <button
-                  v-for="preset in DECK_PRESETS"
-                  :key="preset.id"
-                  type="button"
-                  class="text-[11px] px-2.5 py-1 rounded-lg border transition-colors cursor-pointer"
-                  :class="
-                    selectedPresetId === preset.id
-                      ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200 font-semibold'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                  "
-                  @click="handlePresetChange(preset.id)"
+            <!-- Selecao do Baralho + Gerenciar Baralhos vs + Baralho -->
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <label
+                  for="select-room-deck"
+                  class="text-xs font-medium uppercase tracking-wider text-slate-400"
                 >
-                  {{ preset.label.split(' (')[0] }}
+                  Baralho da Sala ({{ activeSelectedDeck.cards.length }} cartas)
+                </label>
+                <button
+                  type="button"
+                  class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                  @click="openManageDecksModal"
+                >
+                  Gerenciar Baralhos
                 </button>
               </div>
-              <input
-                v-model="customDeckInput"
-                type="text"
-                class="w-full rounded-xl bg-slate-900/90 border border-slate-700/80 px-3.5 py-2 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                placeholder="0, 1, 2, 3, 5, 8, 13, ?, ☕"
-              />
+
+              <div class="flex items-center gap-2">
+                <select
+                  id="select-room-deck"
+                  v-model="selectedDeckId"
+                  class="flex-1 min-w-0 rounded-xl bg-slate-900/90 border border-slate-700/80 px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <optgroup
+                    v-if="customDecks.length > 0"
+                    label="Meus Baralhos Salvos"
+                  >
+                    <option
+                      v-for="deck in customDecks"
+                      :key="deck.id"
+                      :value="deck.id"
+                    >
+                      ★ {{ deck.name }} ({{ deck.cards.join(', ') }})
+                    </option>
+                  </optgroup>
+                  <optgroup label="Baralhos Padrão">
+                    <option
+                      v-for="preset in DECK_PRESETS"
+                      :key="preset.id"
+                      :value="preset.id"
+                    >
+                      {{ preset.label }}
+                    </option>
+                  </optgroup>
+                </select>
+
+                <BaseButton
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  @click="openCreateDeckModal"
+                >
+                  + Baralho
+                </BaseButton>
+              </div>
+
+              <!-- Previa somente-leitura das cartas do baralho selecionado -->
+              <div class="flex flex-wrap gap-1 pt-0.5">
+                <span
+                  v-for="card in activeSelectedDeck.cards"
+                  :key="card"
+                  class="px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-[11px] font-mono text-indigo-200"
+                >
+                  {{ card }}
+                </span>
+              </div>
             </div>
 
             <div class="flex flex-col gap-1.5">
@@ -350,6 +447,16 @@ function handleJoinRoom() {
           </form>
         </section>
       </div>
+
+      <!-- Modal de Baralho (mode='create' para + Baralho, mode='manage' para Gerenciar Baralhos) -->
+      <DeckManagerPanel
+        :open="isDeckModalOpen"
+        :mode="deckModalMode"
+        :selected-deck-id="selectedDeckId"
+        @close="isDeckModalOpen = false"
+        @select-deck="handleSelectDeckFromManager"
+        @decks-updated="handleDecksUpdated"
+      />
     </div>
   </LobbyTemplate>
 </template>

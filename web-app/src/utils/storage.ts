@@ -8,6 +8,14 @@ const HOST_STATE_PREFIX = 'pp_host_raw_state:';
 const HOST_TOKEN_PREFIX = 'pp_host_token:';
 const HOST_ACTIVE_TAB_PREFIX = 'pp_host_active_tab:';
 const OWN_VOTE_PREFIX = 'pp_own_vote:';
+const CUSTOM_DECKS_KEY = 'pp_custom_decks';
+
+export interface CustomDeck {
+  id: string;
+  name: string;
+  cards: VoteValue[];
+  updatedAt: number;
+}
 
 const HOST_TAB_LOCK_TTL_MS = 4500;
 const HOST_ROOM_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
@@ -271,6 +279,75 @@ export function saveOwnVote(roomId: string, playerId: string, vote: VoteValue | 
 export function loadOwnVote(roomId: string, playerId: string): VoteValue | null {
   const key = `${OWN_VOTE_PREFIX}${roomId.toUpperCase()}:${playerId}`;
   return (localStorage.getItem(key) as VoteValue | null) ?? null;
+}
+
+/**
+ * Carrega os baralhos personalizados criados e nomeados pelo usuario no localStorage.
+ */
+export function loadCustomDecks(): CustomDeck[] {
+  const raw = localStorage.getItem(CUSTOM_DECKS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as CustomDeck[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (d) =>
+        d &&
+        typeof d.id === 'string' &&
+        typeof d.name === 'string' &&
+        Array.isArray(d.cards) &&
+        d.cards.length > 0
+    );
+  } catch {
+    localStorage.removeItem(CUSTOM_DECKS_KEY);
+    return [];
+  }
+}
+
+/**
+ * Salva (cria ou atualiza) um baralho personalizado nomeado no localStorage.
+ */
+export function saveCustomDeck(
+  name: string,
+  cards: VoteValue[],
+  existingId?: string
+): CustomDeck {
+  const decks = loadCustomDecks();
+  const cleanName = name.trim() || 'Meu Baralho';
+  const now = Date.now();
+
+  if (existingId) {
+    const idx = decks.findIndex((d) => d.id === existingId);
+    if (idx !== -1) {
+      decks[idx] = {
+        ...decks[idx],
+        name: cleanName,
+        cards,
+        updatedAt: now,
+      };
+      localStorage.setItem(CUSTOM_DECKS_KEY, JSON.stringify(decks));
+      return decks[idx];
+    }
+  }
+
+  const newDeck: CustomDeck = {
+    id: `custom_${crypto.randomUUID()}`,
+    name: cleanName,
+    cards,
+    updatedAt: now,
+  };
+
+  decks.unshift(newDeck);
+  localStorage.setItem(CUSTOM_DECKS_KEY, JSON.stringify(decks));
+  return newDeck;
+}
+
+/**
+ * Remove um baralho personalizado do localStorage.
+ */
+export function deleteCustomDeck(id: string): void {
+  const decks = loadCustomDecks().filter((d) => d.id !== id);
+  localStorage.setItem(CUSTOM_DECKS_KEY, JSON.stringify(decks));
 }
 
 /**
