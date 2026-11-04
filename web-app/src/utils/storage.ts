@@ -115,6 +115,18 @@ export function saveSpectatorFlag(isSpectator: boolean): void {
   sessionStorage.setItem(PLAYER_SPECTATOR_KEY, String(isSpectator));
 }
 
+const JOINED_ROOM_PREFIX = 'poker_joined_room_';
+
+export function hasJoinedRoom(roomId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem(`${JOINED_ROOM_PREFIX}${roomId.toUpperCase()}`) === 'true';
+}
+
+export function markJoinedRoom(roomId: string): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(`${JOINED_ROOM_PREFIX}${roomId.toUpperCase()}`, 'true');
+}
+
 /**
  * Salva ou gera o token secreto do Host no localStorage para autenticar no Durable Object.
  */

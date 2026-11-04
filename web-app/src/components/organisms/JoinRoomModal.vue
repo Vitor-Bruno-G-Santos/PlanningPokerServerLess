@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 interface Props {
   open: boolean;
@@ -19,6 +19,15 @@ const name = ref(props.initialName);
 const isSpectator = ref(false);
 const error = ref('');
 
+watch(
+  () => props.initialName,
+  (newVal) => {
+    if (!name.value && newVal) {
+      name.value = newVal;
+    }
+  }
+);
+
 function handleSubmit() {
   const trimmed = name.value.trim();
   if (!trimmed) {
@@ -33,7 +42,7 @@ function handleSubmit() {
 <template>
   <div
     v-if="open"
-    class="modal-backdrop"
+    class="modal-backdrop open"
   >
     <div
       class="modal-dialog"

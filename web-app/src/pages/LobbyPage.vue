@@ -19,6 +19,7 @@ import {
   getSavedSpectatorFlag,
   listSavedHostRooms,
   loadCustomDecks,
+  markJoinedRoom,
   saveHostRoomState,
   savePlayerName,
   saveSpectatorFlag,
@@ -184,6 +185,7 @@ function handleCreateRoom() {
   getOrCreateHostToken(roomId);
   saveHostRoomState(roomId, initialRoomState);
   claimHostTabLock(roomId);
+  markJoinedRoom(roomId);
 
   router.push({
     name: 'room',
@@ -193,6 +195,7 @@ function handleCreateRoom() {
 
 function handleResumeHostRoom(roomId: string) {
   claimHostTabLock(roomId);
+  markJoinedRoom(roomId);
   router.push({
     name: 'room',
     params: { roomId },
@@ -220,6 +223,7 @@ function handleJoinRoom() {
   joinError.value = '';
   savePlayerName(cleanName);
   saveSpectatorFlag(joinAsSpectator.value);
+  markJoinedRoom(cleanCode);
 
   router.push({
     name: 'room',

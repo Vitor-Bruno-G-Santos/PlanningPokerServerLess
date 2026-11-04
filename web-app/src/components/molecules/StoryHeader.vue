@@ -10,17 +10,21 @@ interface Props {
   totalActivePlayers: number;
   activePlayers?: Player[];
   deck?: VoteValue[];
+  isLastTask?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   activePlayers: () => [],
   deck: () => [],
+  isLastTask: false,
 });
 
 const emit = defineEmits<{
   revealVotes: [];
   startNewRound: [forceRevoteCurrent: boolean];
   manageDecks: [];
+  closeRoom: [];
+  addTask: [];
 }>();
 
 const isIncompleteModalOpen = ref(false);
@@ -104,7 +108,7 @@ function confirmForceReveal() {
       </div>
     </div>
 
-    <!-- Ações do Host: REVELAR CARTAS ou VOTAR NOVAMENTE / PRÓXIMA TASK -->
+    <!-- Ações do Host: REVELAR CARTAS ou VOTAR NOVAMENTE / PRÓXIMA TASK ou ENCERRAR SALA / ADICIONAR TASK -->
     <div
       v-if="isHost"
       class="active-task-actions"
@@ -119,20 +123,41 @@ function confirmForceReveal() {
       </button>
 
       <template v-else>
-        <button
-          type="button"
-          class="btn-ds btn-outline"
-          @click="emit('startNewRound', true)"
-        >
-          VOTAR NOVAMENTE ESTA TASK
-        </button>
-        <button
-          type="button"
-          class="btn-ds btn-primary"
-          @click="emit('startNewRound', false)"
-        >
-          PRÓXIMA TASK
-        </button>
+        <!-- Última Task: Encerrar Sala ou Adicionar Task -->
+        <template v-if="isLastTask">
+          <button
+            type="button"
+            class="btn-ds btn-danger-outline"
+            @click="emit('closeRoom')"
+          >
+            ENCERRAR SALA
+          </button>
+          <button
+            type="button"
+            class="btn-ds btn-primary"
+            @click="emit('addTask')"
+          >
+            ADICIONAR TASK
+          </button>
+        </template>
+
+        <!-- Tasks Anteriores: Votar Novamente ou Próxima Task -->
+        <template v-else>
+          <button
+            type="button"
+            class="btn-ds btn-outline"
+            @click="emit('startNewRound', true)"
+          >
+            VOTAR NOVAMENTE ESTA TASK
+          </button>
+          <button
+            type="button"
+            class="btn-ds btn-primary"
+            @click="emit('startNewRound', false)"
+          >
+            PRÓXIMA TASK
+          </button>
+        </template>
       </template>
     </div>
 
@@ -142,10 +167,18 @@ function confirmForceReveal() {
       class="player-round-status"
     >
       <span class="player-round-status-tag">
-        {{ revealed ? 'CARTAS REVELADAS' : 'STATUS DA RODADA' }}
+        {{
+          revealed
+            ? (isLastTask ? 'VOTAÇÃO CONCLUÍDA' : 'CARTAS REVELADAS')
+            : 'STATUS DA RODADA'
+        }}
       </span>
       <span class="player-round-status-main">
-        {{ revealed ? 'AGUARDANDO PRÓXIMA TASK' : 'AGUARDANDO HOST REVELAR' }}
+        {{
+          revealed
+            ? (isLastTask ? 'TODAS AS TASKS VOTADAS • AGUARDANDO HOST' : 'AGUARDANDO PRÓXIMA TASK')
+            : 'AGUARDANDO HOST REVELAR'
+        }}
       </span>
     </div>
   </section>
@@ -368,6 +401,16 @@ function confirmForceReveal() {
 .btn-outline:hover {
   border-color: var(--secondary);
   background: var(--surface-subtle);
+}
+
+.btn-danger-outline {
+  background: var(--surface-card);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+}
+.btn-danger-outline:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
 }
 
 .modal-backdrop {

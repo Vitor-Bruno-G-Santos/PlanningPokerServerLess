@@ -18,8 +18,10 @@ import {
   getOrCreateHostToken,
   getSavedPlayerName,
   getSavedSpectatorFlag,
+  hasJoinedRoom,
   loadHostRoomState,
   loadOwnVote,
+  markJoinedRoom,
   releaseHostTabLock,
   resolvePlayerIdForRoom,
   saveHostRoomState,
@@ -77,6 +79,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
   const playerName = ref<string>(getSavedPlayerName(normalizedRoomId));
   const isSpectator = ref<boolean>(getSavedSpectatorFlag());
   const myVote = ref<VoteValue | null>(loadOwnVote(normalizedRoomId, playerId));
+  const joinedThisSession = ref<boolean>(hasJoinedRoom(normalizedRoomId));
 
   // Estado bruto (exclusivo do Host, contem votos abertos antes do reveal)
   const hostRawState = ref<RoomState | null>(null);
@@ -203,9 +206,17 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     if (baseEnv && baseEnv.trim().length > 0) {
       baseUrl = baseEnv.replace(/\/+$/, '');
     } else {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname || 'localhost';
-      baseUrl = `${protocol}//${host}:8787`;
+      const isLocal =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1');
+
+      if (isLocal) {
+        baseUrl = 'ws://localhost:8787';
+      } else {
+        // Fallback padrao para producao na Cloudflare
+        baseUrl = 'wss://planning-poker-relay.vitorsaske0.workers.dev';
+      }
     }
 
     const params = new URLSearchParams({
@@ -479,7 +490,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       if (isHost.value) {
         hostOnline.value = true;
         syncAndBroadcastHostState();
-      } else if (playerName.value) {
+      } else if (joinedThisSession.value && playerName.value) {
         dispatchPlayerAction({
           action: 'JOIN',
           playerId,
@@ -553,6 +564,8 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
     playerName.value = clean;
     isSpectator.value = spectator;
+    joinedThisSession.value = true;
+    markJoinedRoom(normalizedRoomId);
     savePlayerName(clean);
     saveSpectatorFlag(spectator);
 
@@ -646,7 +659,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     syncAndBroadcastHostState();
   }
 
-  function addTask(title: string): void {
+  function addTask(title: string, autoSelect = false): void {
     if (!isHost.value || !hostRawState.value) return;
     const clean = title.trim();
     if (!clean) return;
@@ -660,7 +673,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
     hostRawState.value.tasks.push(newTask);
 
-    if (!hostRawState.value.activeTaskId) {
+    if (!hostRawState.value.activeTaskId || autoSelect) {
       selectTask(newTask.id);
       return;
     }
@@ -790,7 +803,10 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
   });
 
   const needsNamePrompt = computed(() => {
-    return !playerName.value || playerName.value.trim().length === 0;
+    if (isHost.value) {
+      return false;
+    }
+    return !joinedThisSession.value || !playerName.value || playerName.value.trim().length === 0;
   });
 
   onUnmounted(() => {
