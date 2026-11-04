@@ -6,9 +6,11 @@
   --surface-card: #FFFFFF;
   --surface-subtle: #EDF1F7;
   --surface-input: #FFFFFF;
+  --surface-overlay: rgba(27, 37, 59, 0.55);
   --color-primary: #1B253B;
   --secondary: #8AA8CC;
   --secondary-soft: rgba(138, 168, 204, 0.18);
+  --secondary-strong: #6A8FB8;
   --text-primary: #1B253B;
   --text-secondary: #5A6B82;
   --text-muted: #7B8CA3;
@@ -20,8 +22,18 @@
   --btn-primary-text: #FFFFFF;
   --btn-secondary-bg: #8AA8CC;
   --btn-secondary-text: #1B253B;
+  --danger: #C93B3B;
+  --danger-soft: rgba(201, 59, 59, 0.12);
+  --danger-border: rgba(201, 59, 59, 0.35);
+  --warning: #B86E14;
+  --warning-soft: rgba(184, 110, 20, 0.12);
+  --warning-border: rgba(184, 110, 20, 0.38);
+  --success: #248A52;
+  --success-soft: rgba(36, 138, 82, 0.14);
   --dot-color: rgba(27, 37, 59, 0.09);
   --shadow-card: 0 8px 24px -6px rgba(27, 37, 59, 0.06), 0 2px 6px -1px rgba(27, 37, 59, 0.04);
+  --shadow-hand: 0 -10px 32px -6px rgba(27, 37, 59, 0.14);
+  --shadow-modal: 0 24px 48px -12px rgba(15, 18, 22, 0.28);
 
   --font-display: 'Chakra Petch', sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
@@ -48,9 +60,11 @@
   --surface-card: #181D24;
   --surface-subtle: #13171D;
   --surface-input: #12161C;
+  --surface-overlay: rgba(8, 10, 14, 0.76);
   --color-primary: #C5D5EA;
   --secondary: #8AA8CC;
   --secondary-soft: rgba(138, 168, 204, 0.14);
+  --secondary-strong: #9FB9D8;
   --text-primary: #FFFFFF;
   --text-secondary: #9FB0C7;
   --text-muted: #68778D;
@@ -62,8 +76,18 @@
   --btn-primary-text: #0F1216;
   --btn-secondary-bg: #8AA8CC;
   --btn-secondary-text: #0F1216;
+  --danger: #E66A6A;
+  --danger-soft: rgba(230, 106, 106, 0.14);
+  --danger-border: rgba(230, 106, 106, 0.38);
+  --warning: #E5A54B;
+  --warning-soft: rgba(229, 165, 75, 0.14);
+  --warning-border: rgba(229, 165, 75, 0.4);
+  --success: #45B877;
+  --success-soft: rgba(69, 184, 119, 0.15);
   --dot-color: rgba(197, 213, 234, 0.08);
   --shadow-card: 0 12px 32px -8px rgba(0, 0, 0, 0.45);
+  --shadow-hand: 0 -12px 36px -4px rgba(0, 0, 0, 0.65);
+  --shadow-modal: 0 24px 56px -10px rgba(0, 0, 0, 0.75);
 }
 
 @layer base {

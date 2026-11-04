@@ -108,18 +108,17 @@ withDefaults(defineProps<Props>(), {
       />
     </svg>
 
-    <!-- Tipografia Planning Poker -->
+    <!-- Tipografia POKERPLAN fiel à imagem enviada (POKER em negrito forte + PLAN fino na mesma linha) -->
     <div
-      class="flex flex-col font-bold leading-[0.98] tracking-[-0.01em]"
-      style="font-family: var(--font-display); color: var(--text-primary);"
+      class="inline-flex items-baseline leading-none uppercase tracking-[0.01em] whitespace-nowrap"
+      style="font-family: 'Montserrat', 'Inter', var(--font-body), sans-serif; color: var(--color-primary);"
       :class="[
-        size === 'sm' ? 'text-base' : '',
-        size === 'md' ? 'text-[22px]' : '',
-        size === 'lg' ? 'text-3xl' : '',
+        size === 'sm' ? 'text-[19px]' : '',
+        size === 'md' ? 'text-[24px]' : '',
+        size === 'lg' ? 'text-[32px]' : '',
       ]"
     >
-      <span>Planning</span>
-      <span>Poker</span>
+      <span class="font-extrabold">POKER</span><span class="font-light">PLAN</span>
     </div>
   </div>
 </template>

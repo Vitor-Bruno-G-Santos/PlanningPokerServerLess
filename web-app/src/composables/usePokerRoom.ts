@@ -47,7 +47,8 @@ function computeTaskEstimate(state: RoomState): string | null {
   if (numericVotes.length > 0) {
     const sum = numericVotes.reduce((acc, n) => acc + n, 0);
     const avg = sum / numericVotes.length;
-    return avg.toFixed(1).replace(/\.0$/, '');
+    const rounded = Math.round(avg);
+    return `${rounded} (${avg.toFixed(1)})`;
   }
 
   // Para baralhos nao-numericos (ex: T-Shirt PP, P, M, G), retorna a moda (voto mais frequente)
@@ -688,6 +689,20 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     syncAndBroadcastHostState();
   }
 
+  function editTask(taskId: string, newTitle: string): void {
+    if (!isHost.value || !hostRawState.value) return;
+    const clean = newTitle.trim();
+    if (!clean) return;
+    const state = hostRawState.value;
+    const target = state.tasks.find((t) => t.id === taskId);
+    if (!target) return;
+    target.title = clean;
+    if (state.activeTaskId === taskId) {
+      state.storyTitle = clean;
+    }
+    syncAndBroadcastHostState();
+  }
+
   function removeTask(taskId: string): void {
     if (!isHost.value || !hostRawState.value) return;
     const state = hostRawState.value;
@@ -817,6 +832,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     updateDeck,
     addTask,
     selectTask,
+    editTask,
     removeTask,
     revealVotes,
     startNewRound,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DEFAULT_DECK } from '@shared/types';
 import { usePokerRoom } from '@/composables/usePokerRoom';
@@ -12,6 +12,8 @@ import ResultsPanel from '@/components/organisms/ResultsPanel.vue';
 import CardDeckDock from '@/components/organisms/CardDeckDock.vue';
 import TaskListPanel from '@/components/organisms/TaskListPanel.vue';
 import JoinRoomModal from '@/components/organisms/JoinRoomModal.vue';
+import DeckManagerPanel from '@/components/organisms/DeckManagerPanel.vue';
+import type { VoteValue } from '@shared/types';
 
 const route = useRoute();
 const router = useRouter();
@@ -44,10 +46,10 @@ const {
   joinRoom,
   castVote,
   toggleSpectator,
-  updateStoryTitle,
   updateDeck,
   addTask,
   selectTask,
+  editTask,
   removeTask,
   revealVotes,
   startNewRound,
@@ -56,13 +58,27 @@ const {
   roomId: roomIdParam,
 });
 
+const sidebarCollapsed = ref(
+  typeof window !== 'undefined' ? window.innerWidth <= 900 : false
+);
+const isDeckManagerOpen = ref(false);
+
+function handleSelectDeckFromManager(payload: {
+  id: string;
+  name: string;
+  cards: VoteValue[];
+}) {
+  updateDeck(payload.cards);
+  isDeckManagerOpen.value = false;
+}
+
 watch(roomClosed, (closed) => {
   if (closed) {
     router.push({ name: 'lobby' });
   }
 });
 
-const { playersList, stats } = usePokerStats(roomState);
+const { playersList, activePlayers, stats } = usePokerStats(roomState);
 
 const hasNextPendingTask = computed(() => {
   const tasks = roomState.value?.tasks ?? [];
@@ -102,26 +118,41 @@ function handleCloseRoom() {
         :connection-status="connectionStatus"
         :host-online="hostOnline"
         @toggle-spectator="toggleSpectator"
+        @manage-decks="isDeckManagerOpen = true"
         @leave-room="handleLeaveRoom"
         @close-room="handleCloseRoom"
       />
     </template>
 
+    <template #sidebar>
+      <TaskListPanel
+        :tasks="roomState?.tasks ?? []"
+        :active-task-id="roomState?.activeTaskId ?? null"
+        :is-host="isHost"
+        :collapsed="sidebarCollapsed"
+        @add-task="addTask"
+        @select-task="selectTask"
+        @edit-task="editTask"
+        @remove-task="removeTask"
+        @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
+      />
+    </template>
+
     <template #header>
-      <div class="flex flex-col gap-3">
+      <div class="stage-header-stack">
         <!-- Alerta caso o Host desconecte temporariamente -->
         <div
           v-if="!hostOnline && !isHost"
-          class="rounded-xl bg-amber-500/15 border border-amber-500/40 px-4 py-2.5 text-xs text-amber-200 flex items-center justify-between"
+          class="room-banner warning"
         >
           <span>
-            O Host da sala está reconectando (ex: recarregou a página). A mesa sincronizará automaticamente assim que ele voltar.
+            O Host da sala está reconectando. A sala sincronizará automaticamente assim que ele voltar.
           </span>
         </div>
 
         <div
           v-if="lastError"
-          class="rounded-xl bg-rose-500/15 border border-rose-500/40 px-4 py-2.5 text-xs text-rose-200"
+          class="room-banner danger"
         >
           {{ lastError }}
         </div>
@@ -130,9 +161,22 @@ function handleCloseRoom() {
           :story-title="roomState?.storyTitle ?? 'Carregando sala...'"
           :is-host="isHost"
           :revealed="roomState?.revealed ?? false"
-          @update-title="updateStoryTitle"
+          :total-voted="stats.totalVoted"
+          :total-active-players="stats.totalActivePlayers"
+          :active-players="activePlayers"
+          :deck="roomState?.deck ?? [...DEFAULT_DECK]"
+          @reveal-votes="revealVotes"
+          @start-new-round="startNewRound"
+          @manage-decks="isDeckManagerOpen = true"
         />
       </div>
+    </template>
+
+    <template #results>
+      <ResultsPanel
+        :stats="stats"
+        :revealed="roomState?.revealed ?? false"
+      />
     </template>
 
     <template #table>
@@ -144,15 +188,6 @@ function handleCloseRoom() {
         :total-voted="stats.totalVoted"
         :total-active-players="stats.totalActivePlayers"
         :has-next-pending-task="hasNextPendingTask"
-        @reveal-votes="revealVotes"
-        @start-new-round="startNewRound"
-      />
-    </template>
-
-    <template #results>
-      <ResultsPanel
-        :stats="stats"
-        :revealed="roomState?.revealed ?? false"
       />
     </template>
 
@@ -163,19 +198,9 @@ function handleCloseRoom() {
         :is-host="isHost"
         :disabled="(roomState?.revealed ?? false) || (!hostOnline && !isHost)"
         :is-spectator="isSpectator"
+        :sidebar-collapsed="sidebarCollapsed"
         @select-vote="castVote"
         @update-deck="updateDeck"
-      />
-    </template>
-
-    <template #sidebar>
-      <TaskListPanel
-        :tasks="roomState?.tasks ?? []"
-        :active-task-id="roomState?.activeTaskId ?? null"
-        :is-host="isHost"
-        @add-task="addTask"
-        @select-task="selectTask"
-        @remove-task="removeTask"
       />
     </template>
 
@@ -186,6 +211,47 @@ function handleCloseRoom() {
         :initial-name="playerName"
         @submit="handleModalSubmit"
       />
+
+      <DeckManagerPanel
+        v-if="isHost"
+        :open="isDeckManagerOpen"
+        mode="manage"
+        :current-room-cards="roomState?.deck ?? [...DEFAULT_DECK]"
+        @close="isDeckManagerOpen = false"
+        @select-deck="handleSelectDeckFromManager"
+      />
     </template>
   </GameRoomTemplate>
 </template>
+
+<style scoped>
+.stage-header-stack {
+  width: 100%;
+  max-width: 880px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.room-banner {
+  width: 100%;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.room-banner.warning {
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
+  color: var(--warning);
+}
+
+.room-banner.danger {
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+}
+</style>

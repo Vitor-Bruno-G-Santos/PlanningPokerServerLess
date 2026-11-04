@@ -6,6 +6,7 @@ export interface VoteDistributionItem {
   count: number;
   percentage: number;
   voters: string[];
+  isMajority: boolean;
 }
 
 export interface PokerStats {
@@ -14,6 +15,8 @@ export interface PokerStats {
   participationPercent: number;
   average: number | null;
   formattedAverage: string;
+  roundedAverage: string;
+  exactAverage: string;
   median: number | null;
   minVote: number | null;
   maxVote: number | null;
@@ -63,6 +66,8 @@ export function usePokerStats(roomState: Ref<RoomState | null>) {
         participationPercent,
         average: null,
         formattedAverage: '—',
+        roundedAverage: '—',
+        exactAverage: '',
         median: null,
         minVote: null,
         maxVote: null,
@@ -98,13 +103,15 @@ export function usePokerStats(roomState: Ref<RoomState | null>) {
     numericValues.sort((a, b) => a - b);
 
     let average: number | null = null;
+    let rawAverage: number | null = null;
     let median: number | null = null;
     let minVote: number | null = null;
     let maxVote: number | null = null;
 
     if (numericValues.length > 0) {
       const sum = numericValues.reduce((acc, n) => acc + n, 0);
-      average = Number((sum / numericValues.length).toFixed(1));
+      rawAverage = sum / numericValues.length;
+      average = Number(rawAverage.toFixed(1));
       minVote = numericValues[0];
       maxVote = numericValues[numericValues.length - 1];
 
@@ -115,9 +122,12 @@ export function usePokerStats(roomState: Ref<RoomState | null>) {
           : Number(((numericValues[mid - 1] + numericValues[mid]) / 2).toFixed(1));
     }
 
-    const distribution: VoteDistributionItem[] = Array.from(
-      distMap.entries()
-    )
+    const entries = Array.from(distMap.entries());
+    const maxCount = entries.length > 0
+      ? Math.max(...entries.map(([, v]) => v.length))
+      : 0;
+
+    const distribution: VoteDistributionItem[] = entries
       .map(([value, voters]) => ({
         value,
         count: voters.length,
@@ -126,8 +136,16 @@ export function usePokerStats(roomState: Ref<RoomState | null>) {
             ? Math.round((voters.length / revealedVoters.length) * 100)
             : 0,
         voters,
+        isMajority: voters.length === maxCount && entries.length > 1,
       }))
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => {
+        const na = Number(a.value);
+        const nb = Number(b.value);
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+        if (!Number.isNaN(na)) return -1;
+        if (!Number.isNaN(nb)) return 1;
+        return String(a.value).localeCompare(String(b.value));
+      });
 
     const isConsensus =
       revealedVoters.length > 1 && distribution.length === 1;
@@ -138,7 +156,9 @@ export function usePokerStats(roomState: Ref<RoomState | null>) {
       totalVoted,
       participationPercent,
       average,
-      formattedAverage: average !== null ?average.toFixed(1).replace(/\.0$/, '') : '—',
+      formattedAverage: average !== null ? average.toFixed(1).replace(/\.0$/, '') : '—',
+      roundedAverage: rawAverage !== null ? String(Math.round(rawAverage)) : '—',
+      exactAverage: rawAverage !== null ? rawAverage.toFixed(1) : '',
       median,
       minVote,
       maxVote,

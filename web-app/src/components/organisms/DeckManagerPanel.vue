@@ -21,11 +21,13 @@ interface Props {
   open: boolean;
   mode?: DeckModalMode;
   selectedDeckId?: string;
+  currentRoomCards?: VoteValue[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
   mode: 'create',
   selectedDeckId: '',
+  currentRoomCards: () => [],
 });
 
 const emit = defineEmits<{
@@ -36,6 +38,7 @@ const emit = defineEmits<{
 
 const customDecks = ref<CustomDeck[]>(loadCustomDecks());
 const editingDeck = ref<CustomDeck | null>(null);
+const creatingInsideManage = ref(false);
 
 const deckName = ref('');
 const deckCardsRaw = ref(DEFAULT_DECK.join(', '));
@@ -48,16 +51,33 @@ watch(
     if (isOpen) {
       customDecks.value = loadCustomDecks();
       editingDeck.value = null;
+      creatingInsideManage.value = false;
       resetForm();
     }
   }
 );
 
 const isShowingForm = computed(
-  () => props.mode === 'create' || editingDeck.value !== null
+  () =>
+    props.mode === 'create' ||
+    editingDeck.value !== null ||
+    creatingInsideManage.value
 );
 
 const parsedCardsPreview = computed(() => parseDeckString(deckCardsRaw.value));
+
+function isSameCards(a: VoteValue[], b: VoteValue[]): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((val, idx) => val === b[idx]);
+}
+
+function isDeckActive(id: string, cards: VoteValue[]): boolean {
+  if (props.selectedDeckId && props.selectedDeckId === id) return true;
+  if (props.currentRoomCards && props.currentRoomCards.length > 0) {
+    return isSameCards(props.currentRoomCards, cards);
+  }
+  return false;
+}
 
 function refreshDecks() {
   customDecks.value = loadCustomDecks();
@@ -111,8 +131,9 @@ function handleSaveDeck() {
     cards: saved.cards,
   });
 
-  if (props.mode === 'manage' && editingDeck.value) {
+  if (props.mode === 'manage') {
     editingDeck.value = null;
+    creatingInsideManage.value = false;
     resetForm();
   } else {
     resetForm();
@@ -120,7 +141,18 @@ function handleSaveDeck() {
   }
 }
 
+function startCreateFromManage(initialCards?: VoteValue[], suggestedName = '') {
+  editingDeck.value = null;
+  creatingInsideManage.value = true;
+  deckName.value = suggestedName;
+  deckCardsRaw.value = (
+    initialCards && initialCards.length > 0 ? initialCards : DEFAULT_DECK
+  ).join(', ');
+  formError.value = '';
+}
+
 function startEditFromManage(deck: CustomDeck) {
+  creatingInsideManage.value = false;
   editingDeck.value = deck;
   deckName.value = deck.name;
   deckCardsRaw.value = deck.cards.join(', ');
@@ -129,14 +161,15 @@ function startEditFromManage(deck: CustomDeck) {
 
 function cancelEditInManage() {
   editingDeck.value = null;
+  creatingInsideManage.value = false;
   resetForm();
 }
 
-function handleUseDeck(deck: CustomDeck) {
+function handleUseDeck(payload: { id: string; name: string; cards: VoteValue[] }) {
   emit('selectDeck', {
-    id: deck.id,
-    name: deck.name,
-    cards: deck.cards,
+    id: payload.id,
+    name: payload.name,
+    cards: [...payload.cards],
   });
   emit('close');
 }
@@ -148,7 +181,11 @@ function handleDeleteDeck(id: string) {
 
 function resetForm() {
   deckName.value = '';
-  deckCardsRaw.value = DEFAULT_DECK.join(', ');
+  deckCardsRaw.value = (
+    props.currentRoomCards && props.currentRoomCards.length > 0
+      ? props.currentRoomCards
+      : DEFAULT_DECK
+  ).join(', ');
   singleCardInput.value = '';
   formError.value = '';
 }
@@ -158,16 +195,16 @@ function resetForm() {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto"
+      class="fixed inset-0 z-110 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto"
       @click.self="emit('close')"
     >
       <section
-        class="w-full max-w-lg rounded-2xl p-6 flex flex-col gap-5 my-auto"
+        class="w-full max-w-xl rounded-2xl p-6 flex flex-col gap-5 my-auto"
         style="
           background-color: var(--surface-card);
-          border: 1px solid var(--border-card);
+          border: 2px solid var(--border-card);
           color: var(--text-primary);
-          box-shadow: var(--shadow-card);
+          box-shadow: var(--shadow-modal);
         "
       >
         <!-- Header do Modal -->
@@ -180,39 +217,39 @@ function resetForm() {
               class="text-[11px] font-semibold uppercase tracking-widest"
               style="font-family: var(--font-mono); color: var(--secondary);"
             >
-              <template v-if="mode === 'create'">
+              <template v-if="mode === 'create' || creatingInsideManage">
                 NOVO BARALHO PERSONALIZADO
               </template>
               <template v-else-if="editingDeck">
                 EDITAR BARALHO SALVO
               </template>
               <template v-else>
-                BIBLIOTECA DO NAVEGADOR
+                SISTEMA DE VOTO // BIBLIOTECA DE BARALHOS
               </template>
             </span>
             <h2
               class="text-xl font-bold uppercase tracking-wide"
               style="font-family: var(--font-display);"
             >
-              <template v-if="mode === 'create'">
+              <template v-if="mode === 'create' || creatingInsideManage">
                 CRIAR BARALHO
               </template>
               <template v-else-if="editingDeck">
                 EDITANDO "{{ editingDeck.name }}"
               </template>
               <template v-else>
-                GERENCIAR BARALHOS SALVOS
+                GERENCIAR E ESCOLHER BARALHOS
               </template>
             </h2>
             <p class="text-xs" style="color: var(--text-secondary);">
-              <template v-if="mode === 'create'">
-                Dê um nome e defina as cartas. Ele ficará salvo no seu navegador.
+              <template v-if="mode === 'create' || creatingInsideManage">
+                Dê um nome e defina as cartas. Ele ficará salvo no seu navegador e já será aplicado.
               </template>
               <template v-else-if="editingDeck">
                 Altere o nome ou as cartas deste baralho salvo.
               </template>
               <template v-else>
-                Visualize, edite ou exclua os baralhos personalizados salvos no seu navegador.
+                Escolha qual baralho usar na sala, crie novos ou edite seus baralhos personalizados.
               </template>
             </p>
           </div>
@@ -227,7 +264,7 @@ function resetForm() {
           </BaseButton>
         </div>
 
-        <!-- MODO 1: CRIAR NOVO BARALHO -->
+        <!-- MODO 1: CRIAR OU EDITAR BARALHO -->
         <form
           v-if="isShowingForm"
           class="flex flex-col gap-4"
@@ -353,7 +390,7 @@ function resetForm() {
 
           <div class="flex items-center justify-end gap-2 pt-2">
             <BaseButton
-              v-if="editingDeck"
+              v-if="mode === 'manage'"
               type="button"
               variant="ghost"
               size="md"
@@ -371,99 +408,204 @@ function resetForm() {
               Cancelar
             </BaseButton>
             <BaseButton type="submit" variant="primary" size="md">
-              {{ editingDeck ? 'Salvar Alterações' : 'Salvar Baralho' }}
+              {{ editingDeck ? 'Salvar e Aplicar' : 'Salvar Baralho' }}
             </BaseButton>
           </div>
         </form>
 
-        <!-- MODO 2: GERENCIAR BARALHOS SALVOS -->
-        <div v-else class="flex flex-col gap-4">
-          <div
-            v-if="customDecks.length === 0"
-            class="rounded-xl border border-dashed p-8 flex flex-col items-center justify-center text-center gap-2"
-            style="
-              border-color: var(--border-dashed);
-              background-color: var(--surface-subtle);
-            "
-          >
-            <span class="text-sm font-semibold">
-              Você ainda não tem baralhos salvos
-            </span>
-            <p class="text-xs max-w-xs" style="color: var(--text-secondary);">
-              Use o botão "+ Baralho" para criar seu primeiro baralho personalizado.
-            </p>
-          </div>
+        <!-- MODO 2: GERENCIAR E ESCOLHER BARALHOS -->
+        <div v-else class="flex flex-col gap-4 max-h-[68vh] overflow-y-auto pr-1">
+          <!-- Cabeçalho de Baralhos Personalizados + Botão Criar -->
+          <div class="flex flex-col gap-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <span
+                class="text-xs font-bold uppercase tracking-wider"
+                style="font-family: var(--font-mono); color: var(--text-secondary);"
+              >
+                MEUS BARALHOS PERSONALIZADOS ({{ customDecks.length }})
+              </span>
+              <BaseButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                @click="startCreateFromManage()"
+              >
+                + Criar Baralho
+              </BaseButton>
+            </div>
 
-          <div
-            v-else
-            class="flex flex-col gap-2.5 max-h-[360px] overflow-y-auto pr-1"
-          >
             <div
-              v-for="deck in customDecks"
-              :key="deck.id"
-              class="rounded-xl p-4 flex flex-col gap-2.5"
-              :style="{
-                backgroundColor: 'var(--surface-subtle)',
-                border:
-                  selectedDeckId === deck.id
+              v-if="customDecks.length === 0"
+              class="rounded-xl border border-dashed p-5 flex flex-col items-center justify-center text-center gap-1.5"
+              style="
+                border-color: var(--border-dashed);
+                background-color: var(--surface-subtle);
+              "
+            >
+              <span class="text-xs font-semibold">
+                Nenhum baralho personalizado salvo ainda
+              </span>
+              <p class="text-[11px] max-w-xs" style="color: var(--text-secondary);">
+                Clique em "+ Criar Baralho" acima para montar um baralho com suas próprias cartas.
+              </p>
+            </div>
+
+            <div
+              v-else
+              class="flex flex-col gap-2.5"
+            >
+              <div
+                v-for="deck in customDecks"
+                :key="deck.id"
+                class="rounded-xl p-3.5 flex flex-col gap-2.5"
+                :style="{
+                  backgroundColor: 'var(--surface-subtle)',
+                  border: isDeckActive(deck.id, deck.cards)
                     ? '2px solid var(--card-active-border)'
                     : '1px solid var(--border-card)',
-              }"
-            >
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex items-center gap-2 min-w-0">
-                  <span class="text-sm font-bold truncate">
-                    {{ deck.name }}
-                  </span>
-                  <span
-                    class="text-[11px] shrink-0"
-                    style="font-family: var(--font-mono); color: var(--text-secondary);"
-                  >
-                    ({{ deck.cards.length }} cartas)
-                  </span>
+                }"
+              >
+                <div class="flex items-start justify-between gap-2 flex-wrap">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-sm font-bold truncate">
+                      {{ deck.name }}
+                    </span>
+                    <span
+                      class="text-[11px] shrink-0"
+                      style="font-family: var(--font-mono); color: var(--text-secondary);"
+                    >
+                      ({{ deck.cards.length }} cartas)
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <BaseButton
+                      type="button"
+                      :variant="isDeckActive(deck.id, deck.cards) ? 'primary' : 'outline'"
+                      size="sm"
+                      @click="handleUseDeck(deck)"
+                    >
+                      {{ isDeckActive(deck.id, deck.cards) ? 'Em Uso' : 'Escolher' }}
+                    </BaseButton>
+                    <BaseButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      @click="startEditFromManage(deck)"
+                    >
+                      Editar
+                    </BaseButton>
+                    <BaseButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      @click="handleDeleteDeck(deck.id)"
+                    >
+                      Excluir
+                    </BaseButton>
+                  </div>
                 </div>
 
-                <div class="flex items-center gap-1.5 shrink-0">
-                  <BaseButton
-                    type="button"
-                    :variant="selectedDeckId === deck.id ? 'primary' : 'outline'"
-                    size="sm"
-                    @click="handleUseDeck(deck)"
+                <div class="flex flex-wrap gap-1">
+                  <span
+                    v-for="card in deck.cards"
+                    :key="card"
+                    class="px-2 py-0.5 rounded text-[11px] font-mono"
+                    style="
+                      background-color: var(--surface-card);
+                      border: 1px solid var(--border-card);
+                      color: var(--text-secondary);
+                    "
                   >
-                    {{ selectedDeckId === deck.id ? 'Selecionado' : 'Selecionar' }}
-                  </BaseButton>
-                  <BaseButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="startEditFromManage(deck)"
-                  >
-                    Editar
-                  </BaseButton>
-                  <BaseButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="handleDeleteDeck(deck.id)"
-                  >
-                    Excluir
-                  </BaseButton>
+                    {{ card }}
+                  </span>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div class="flex flex-wrap gap-1">
-                <span
-                  v-for="card in deck.cards"
-                  :key="card"
-                  class="px-2 py-0.5 rounded text-[11px] font-mono"
-                  style="
-                    background-color: var(--surface-card);
-                    border: 1px solid var(--border-card);
-                    color: var(--text-secondary);
-                  "
-                >
-                  {{ card }}
-                </span>
+          <!-- Baralhos Padrão do Sistema -->
+          <div
+            class="flex flex-col gap-2.5 pt-3 border-t border-dashed"
+            style="border-color: var(--border-dashed);"
+          >
+            <span
+              class="text-xs font-bold uppercase tracking-wider"
+              style="font-family: var(--font-mono); color: var(--text-secondary);"
+            >
+              BARALHOS PADRÃO DO SISTEMA ({{ DECK_PRESETS.length }})
+            </span>
+
+            <div class="flex flex-col gap-2">
+              <div
+                v-for="preset in DECK_PRESETS"
+                :key="preset.id"
+                class="rounded-xl p-3.5 flex flex-col gap-2"
+                :style="{
+                  backgroundColor: 'var(--surface-subtle)',
+                  border: isDeckActive(preset.id, preset.cards)
+                    ? '2px solid var(--card-active-border)'
+                    : '1px solid var(--border-card)',
+                }"
+              >
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-sm font-bold truncate">
+                      {{ preset.label.split(' (')[0] }}
+                    </span>
+                    <span
+                      class="text-[11px] shrink-0"
+                      style="font-family: var(--font-mono); color: var(--text-secondary);"
+                    >
+                      ({{ preset.cards.length }} cartas)
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <BaseButton
+                      type="button"
+                      :variant="isDeckActive(preset.id, preset.cards) ? 'primary' : 'outline'"
+                      size="sm"
+                      @click="
+                        handleUseDeck({
+                          id: preset.id,
+                          name: preset.label.split(' (')[0],
+                          cards: [...preset.cards],
+                        })
+                      "
+                    >
+                      {{ isDeckActive(preset.id, preset.cards) ? 'Em Uso' : 'Escolher' }}
+                    </BaseButton>
+                    <BaseButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      @click="
+                        startCreateFromManage(
+                          [...preset.cards],
+                          `${preset.label.split(' (')[0]} Custom`
+                        )
+                      "
+                    >
+                      Editar Cópia
+                    </BaseButton>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-1">
+                  <span
+                    v-for="card in preset.cards"
+                    :key="card"
+                    class="px-2 py-0.5 rounded text-[11px] font-mono"
+                    style="
+                      background-color: var(--surface-card);
+                      border: 1px solid var(--border-card);
+                      color: var(--text-secondary);
+                    "
+                  >
+                    {{ card }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
