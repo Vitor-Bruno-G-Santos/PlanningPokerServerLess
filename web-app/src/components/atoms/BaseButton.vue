@@ -1,6 +1,6 @@
 <script setup lang="ts">
 interface Props {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'emerald';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'emerald';
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   loading?: boolean;
@@ -22,27 +22,18 @@ withDefaults(defineProps<Props>(), {
   <button
     :type="type"
     :disabled="disabled || loading"
-    class="inline-flex items-center justify-center gap-2 font-semibold rounded-xl transition-all duration-200 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]"
+    class="inline-flex items-center justify-center gap-2 font-semibold transition-all duration-150 cursor-pointer select-none focus:outline-none disabled:opacity-50 disabled:pointer-events-none active:scale-[0.99]"
+    style="font-family: var(--font-mono); border-radius: var(--radius-md);"
     :class="[
       fullWidth ? 'w-full' : '',
       size === 'sm' ? 'px-3 py-1.5 text-xs' : '',
-      size === 'md' ? 'px-4 py-2.5 text-sm' : '',
-      size === 'lg' ? 'px-6 py-3.5 text-base' : '',
-      variant === 'primary'
-        ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25 focus:ring-indigo-500'
-        : '',
-      variant === 'emerald'
-        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/25 focus:ring-emerald-500'
-        : '',
-      variant === 'secondary'
-        ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 focus:ring-slate-500'
-        : '',
-      variant === 'ghost'
-        ? 'bg-transparent hover:bg-slate-800/70 text-slate-300 hover:text-white focus:ring-slate-600'
-        : '',
-      variant === 'danger'
-        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/25 focus:ring-rose-500'
-        : '',
+      size === 'md' ? 'px-4 py-2.5 text-xs tracking-wide uppercase' : '',
+      size === 'lg' ? 'px-6 py-3.5 text-sm tracking-wide uppercase font-bold' : '',
+      variant === 'primary' ? 'btn-ds-primary' : '',
+      variant === 'secondary' || variant === 'emerald' ? 'btn-ds-secondary' : '',
+      variant === 'outline' ? 'btn-ds-outline' : '',
+      variant === 'ghost' ? 'btn-ds-ghost' : '',
+      variant === 'danger' ? 'bg-rose-600 hover:bg-rose-500 text-white' : '',
     ]"
   >
     <span
@@ -52,3 +43,43 @@ withDefaults(defineProps<Props>(), {
     <slot />
   </button>
 </template>
+
+<style scoped>
+.btn-ds-primary {
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: 1px solid var(--btn-primary-bg);
+}
+.btn-ds-primary:hover {
+  opacity: 0.92;
+}
+
+.btn-ds-secondary {
+  background-color: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-bg);
+  font-weight: 700;
+}
+.btn-ds-secondary:hover {
+  opacity: 0.9;
+}
+
+.btn-ds-outline {
+  background-color: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-card);
+}
+.btn-ds-outline:hover {
+  border-color: var(--secondary);
+  background-color: var(--surface-subtle);
+}
+
+.btn-ds-ghost {
+  background-color: transparent;
+  color: var(--text-secondary);
+}
+.btn-ds-ghost:hover {
+  background-color: var(--surface-subtle);
+  color: var(--text-primary);
+}
+</style>

@@ -2,12 +2,13 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import LobbyTemplate from '@/components/templates/LobbyTemplate.vue';
+import AppLogo from '@/components/atoms/AppLogo.vue';
 import BaseButton from '@/components/atoms/BaseButton.vue';
 import BaseInput from '@/components/atoms/BaseInput.vue';
-import BaseBadge from '@/components/atoms/BaseBadge.vue';
 import DeckManagerPanel, {
   type DeckModalMode,
 } from '@/components/organisms/DeckManagerPanel.vue';
+import { useTheme } from '@/composables/useTheme';
 import {
   claimHostTabLock,
   clearHostRoomState,
@@ -15,6 +16,7 @@ import {
   getOrCreateHostToken,
   getOrCreatePlayerId,
   getSavedPlayerName,
+  getSavedSpectatorFlag,
   listSavedHostRooms,
   loadCustomDecks,
   saveHostRoomState,
@@ -31,16 +33,20 @@ import {
 } from '@shared/types';
 
 const router = useRouter();
+const { theme, toggleTheme } = useTheme();
 
 const hostName = ref(getSavedPlayerName());
+const sessionName = ref('Sprint 42: Checkout Pix');
 const initialTasksText = ref(
-  'US-01: Autenticação OAuth\nUS-02: Tela de Dashboard\nUS-03: Exportação de Relatório'
+  'US-104: Checkout Pix com QR Code dinâmico\nUS-105: Webhook de confirmação de pagamento\nUS-106: Conciliação automática no painel'
 );
 
 const customDecks = ref<CustomDeck[]>(loadCustomDecks());
 const selectedDeckId = ref<string>(
   customDecks.value[0]?.id ?? DECK_PRESETS[0].id
 );
+const previewHighlightedCard = ref<VoteValue>('2');
+
 const isDeckModalOpen = ref(false);
 const deckModalMode = ref<DeckModalMode>('create');
 
@@ -56,6 +62,7 @@ function openManageDecksModal() {
 
 const joinName = ref(getSavedPlayerName());
 const roomCodeInput = ref('');
+const joinAsSpectator = ref(getSavedSpectatorFlag());
 const createError = ref('');
 const joinError = ref('');
 
@@ -87,6 +94,13 @@ const activeSelectedDeck = computed(() => {
       isCustom: false,
     }
   );
+});
+
+const parsedTasksCount = computed(() => {
+  return initialTasksText.value
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0).length;
 });
 
 function refreshSavedHostRooms() {
@@ -132,8 +146,8 @@ function handleCreateRoom() {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  const taskTitles =
-    lines.length > 0 ? lines : ['US-01: Definir estimativa da história'];
+  const defaultTitle = sessionName.value.trim() || 'US-01: Definir estimativa da história';
+  const taskTitles = lines.length > 0 ? lines : [defaultTitle];
 
   const tasks: StoryTask[] = taskTitles.map((title, idx) => ({
     id: crypto.randomUUID(),
@@ -205,6 +219,7 @@ function handleJoinRoom() {
 
   joinError.value = '';
   savePlayerName(cleanName);
+  saveSpectatorFlag(joinAsSpectator.value);
 
   router.push({
     name: 'room',
@@ -215,240 +230,458 @@ function handleJoinRoom() {
 
 <template>
   <LobbyTemplate>
-    <div class="w-full max-w-4xl flex flex-col items-center gap-8">
-      <!-- Hero Header -->
-      <div class="flex flex-col items-center text-center gap-3 max-w-2xl">
-        <BaseBadge tone="indigo" dot>
-          Zero Database • WebSocket Hibernation • Host Source-of-Truth
-        </BaseBadge>
-        <h1
-          class="text-3xl sm:text-5xl font-extrabold tracking-tight text-white"
-        >
-          Planning Poker em Tempo Real
-        </h1>
-        <p class="text-sm sm:text-base text-slate-400">
-          Sem banco de dados tradicional: o navegador do Host mantém a verdade absoluta no
-          <code class="text-indigo-300">localStorage</code> e o Cloudflare Durable Object
-          transmite apenas votos mascarados.
-        </p>
-      </div>
-
-      <!-- Salas Recentes do Host (Permite retomar apos fechar o navegador) -->
-      <section
-        v-if="savedHostRooms.length > 0"
-        class="w-full rounded-2xl bg-indigo-950/30 border border-indigo-500/30 p-5 shadow-xl flex flex-col gap-3"
+    <div class="w-full flex flex-col gap-8">
+      <!-- Top Bar -->
+      <header
+        class="w-full pb-6 flex flex-wrap items-center justify-between gap-4 border-b border-dashed"
+        style="border-color: var(--border-dashed);"
       >
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <BaseBadge tone="amber">Host</BaseBadge>
-            <h2 class="text-sm font-bold text-white">
-              Suas Salas Salvas (Retomar após fechar o navegador)
-            </h2>
+        <div class="flex flex-wrap items-center gap-6">
+          <AppLogo size="md" />
+
+          <div
+            class="hidden sm:block w-px h-9"
+            style="background-color: var(--border-card);"
+          />
+
+          <div class="flex items-center gap-2.5">
+            <h1
+              class="text-lg sm:text-2xl font-bold uppercase tracking-wide"
+              style="font-family: var(--font-display);"
+            >
+              LOBBY
+              <span
+                class="font-semibold"
+                style="color: var(--secondary);"
+              >
+                // CRIAR OU ENTRAR EM SALA
+              </span>
+            </h1>
           </div>
-          <span class="text-xs text-slate-400">
-            {{ savedHostRooms.length }} {{ savedHostRooms.length === 1 ? 'sala' : 'salas' }}
-          </span>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div
-            v-for="room in savedHostRooms"
-            :key="room.roomId"
-            class="flex items-center justify-between gap-3 rounded-xl bg-slate-900/90 border border-slate-800 px-4 py-3"
+        <div class="flex items-center gap-3">
+          <BaseButton
+            type="button"
+            variant="primary"
+            size="md"
+            @click="toggleTheme"
           >
-            <div class="flex flex-col min-w-0">
-              <div class="flex items-center gap-2">
-                <code class="text-xs font-mono font-bold text-indigo-300">
-                  {{ room.roomId }}
-                </code>
-                <span class="text-[11px] text-slate-400">
-                  • {{ room.tasks?.length || 0 }} tasks
-                </span>
+            <span v-if="theme === 'dark'">☀️ VER LIGHT MODE</span>
+            <span v-else>🌙 VER DARK MODE</span>
+          </BaseButton>
+        </div>
+      </header>
+
+      <!-- Main Split Grid: Criar Sala vs Entrar em Sala + Salas Salvas -->
+      <div class="w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        <!-- Left Card (7 cols): Criar Sala como Host -->
+        <section
+          class="lg:col-span-7 rounded-2xl p-6 sm:p-7 flex flex-col justify-between gap-6"
+          style="
+            background-color: var(--surface-card);
+            border: 2px solid var(--card-active-border);
+            box-shadow: var(--shadow-card);
+          "
+        >
+          <div class="flex flex-col gap-5">
+            <div
+              class="pb-4 border-b border-dashed flex flex-col gap-1"
+              style="border-color: var(--border-dashed);"
+            >
+              <span
+                class="text-[11px] font-semibold uppercase tracking-widest"
+                style="font-family: var(--font-mono); color: var(--secondary);"
+              >
+                01 // NOVA SESSÃO (FACILITADOR)
+              </span>
+              <h2
+                class="text-2xl font-bold uppercase tracking-wide"
+                style="font-family: var(--font-display);"
+              >
+                CRIAR SALA COMO HOST
+              </h2>
+              <p
+                class="text-xs sm:text-sm"
+                style="color: var(--text-secondary);"
+              >
+                Configure o sistema de voto e a lista de histórias da sprint.
+              </p>
+            </div>
+
+            <form
+              id="create-room-form"
+              class="flex flex-col gap-4"
+              @submit.prevent="handleCreateRoom"
+            >
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <BaseInput
+                  id="create-host-name"
+                  v-model="hostName"
+                  label="Seu Nome (Host)"
+                  placeholder="Ex: Vitor Bruno"
+                  :error="createError"
+                />
+
+                <BaseInput
+                  id="create-session-name"
+                  v-model="sessionName"
+                  label="Nome da Sprint / Sessão"
+                  placeholder="Ex: Sprint 42: Checkout Pix"
+                />
               </div>
-              <span class="text-xs text-slate-200 truncate">
-                {{ room.storyTitle }}
+
+              <!-- Sistema de Voto (Baralho da Sala) -->
+              <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                  <label
+                    for="select-room-deck"
+                    class="text-xs font-semibold uppercase tracking-wider"
+                    style="color: var(--text-secondary);"
+                  >
+                    Sistema de Voto (Baralho da Sala)
+                  </label>
+                  <button
+                    type="button"
+                    class="text-[11px] font-semibold uppercase tracking-wider cursor-pointer hover:underline"
+                    style="font-family: var(--font-mono); color: var(--secondary);"
+                    @click="openManageDecksModal"
+                  >
+                    Gerenciar Baralhos
+                  </button>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <select
+                    id="select-room-deck"
+                    v-model="selectedDeckId"
+                    class="ds-select flex-1 min-w-0 px-3.5 py-2.5 text-sm cursor-pointer focus:outline-none"
+                  >
+                    <optgroup
+                      v-if="customDecks.length > 0"
+                      label="Meus Baralhos Salvos"
+                    >
+                      <option
+                        v-for="deck in customDecks"
+                        :key="deck.id"
+                        :value="deck.id"
+                      >
+                        ★ {{ deck.name }} ({{ deck.cards.join(', ') }})
+                      </option>
+                    </optgroup>
+                    <optgroup label="Baralhos Padrão">
+                      <option
+                        v-for="preset in DECK_PRESETS"
+                        :key="preset.id"
+                        :value="preset.id"
+                      >
+                        Sistema de Voto ({{ preset.label }})
+                      </option>
+                    </optgroup>
+                  </select>
+
+                  <BaseButton
+                    type="button"
+                    variant="outline"
+                    size="md"
+                    @click="openCreateDeckModal"
+                  >
+                    + Baralho
+                  </BaseButton>
+                </div>
+
+                <!-- Mini Poker Cards Preview -->
+                <div
+                  class="rounded-lg p-3 flex flex-col gap-2 mt-1"
+                  style="
+                    background-color: var(--surface-subtle);
+                    border: 1px solid var(--border-card);
+                  "
+                >
+                  <div
+                    class="flex items-center justify-between text-[11px]"
+                    style="font-family: var(--font-mono); color: var(--text-secondary);"
+                  >
+                    <span>
+                      CARTAS ATIVAS NO BARALHO ({{ activeSelectedDeck.cards.length }} CARTAS)
+                    </span>
+                    <span>{{ activeSelectedDeck.name }}</span>
+                  </div>
+
+                  <div class="ds-cards-scroll flex items-center gap-1.5 overflow-x-auto pt-1 pb-2">
+                    <button
+                      v-for="card in activeSelectedDeck.cards"
+                      :key="card"
+                      type="button"
+                      class="mini-poker-card shrink-0 cursor-pointer transition-transform"
+                      :class="{
+                        active: previewHighlightedCard === card,
+                      }"
+                      @click="previewHighlightedCard = card"
+                    >
+                      <span class="c-top">{{ card }}</span>
+                      <span>{{ card }}</span>
+                      <span class="c-bot">{{ card }}</span>
+                    </button>
+
+                    <!-- Carta virada (Back face preview) -->
+                    <div
+                      class="mini-poker-card back shrink-0"
+                      title="Verso da carta"
+                    >
+                      &lt;♠&gt;
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Lista de Tasks para Votacao -->
+              <div class="flex flex-col gap-1.5">
+                <div class="flex items-center justify-between">
+                  <label
+                    for="create-tasks-list"
+                    class="text-xs font-semibold uppercase tracking-wider"
+                    style="color: var(--text-secondary);"
+                  >
+                    Lista de Tasks para Votação (1 por linha)
+                  </label>
+                  <span
+                    class="text-[11px] uppercase"
+                    style="font-family: var(--font-mono); color: var(--text-muted);"
+                  >
+                    {{ parsedTasksCount }}
+                    {{ parsedTasksCount === 1 ? 'HISTÓRIA' : 'HISTÓRIAS' }}
+                  </span>
+                </div>
+                <textarea
+                  id="create-tasks-list"
+                  v-model="initialTasksText"
+                  rows="3"
+                  placeholder="US-104: Checkout Pix com QR Code dinâmico&#10;US-105: Webhook de confirmação de pagamento"
+                  class="ds-textarea w-full px-3.5 py-2.5 text-xs focus:outline-none resize-none"
+                />
+              </div>
+            </form>
+          </div>
+
+          <div class="pt-2">
+            <BaseButton
+              type="submit"
+              form="create-room-form"
+              variant="primary"
+              size="lg"
+              full-width
+            >
+              Criar Sala Agora
+            </BaseButton>
+          </div>
+        </section>
+
+        <!-- Right Column (5 cols): Entrar em uma Sala + Sessões Recentes -->
+        <div class="lg:col-span-5 flex flex-col gap-6 justify-between">
+          <!-- Card 2: Entrar em uma Sala -->
+          <section
+            class="rounded-2xl p-6 sm:p-7 flex flex-col justify-between gap-6 flex-1"
+            style="
+              background-color: var(--surface-card);
+              border: 1px solid var(--border-card);
+              box-shadow: var(--shadow-card);
+            "
+          >
+            <div class="flex flex-col gap-5">
+              <div
+                class="pb-4 border-b border-dashed flex flex-col gap-1"
+                style="border-color: var(--border-dashed);"
+              >
+                <span
+                  class="text-[11px] font-semibold uppercase tracking-widest"
+                  style="font-family: var(--font-mono); color: var(--secondary);"
+                >
+                  02 // PARTICIPAR DA MESA
+                </span>
+                <h2
+                  class="text-2xl font-bold uppercase tracking-wide"
+                  style="font-family: var(--font-display);"
+                >
+                  ENTRAR EM UMA SALA
+                </h2>
+                <p
+                  class="text-xs sm:text-sm"
+                  style="color: var(--text-secondary);"
+                >
+                  Informe o código compartilhado pelo Facilitador.
+                </p>
+              </div>
+
+              <form
+                id="join-room-form"
+                class="flex flex-col gap-4"
+                @submit.prevent="handleJoinRoom"
+              >
+                <BaseInput
+                  id="join-room-code"
+                  v-model="roomCodeInput"
+                  label="Código da Sala (6 caracteres)"
+                  placeholder="A7K9X2"
+                  :maxlength="12"
+                  mono
+                />
+
+                <BaseInput
+                  id="join-player-name-lobby"
+                  v-model="joinName"
+                  label="Seu Nome na Mesa"
+                  placeholder="Ex: Gustavo Villa"
+                  :error="joinError"
+                />
+
+                <!-- Toggle Espectador -->
+                <button
+                  type="button"
+                  class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"
+                  style="
+                    background-color: var(--surface-subtle);
+                    border: 1px solid var(--border-card);
+                    color: var(--text-secondary);
+                  "
+                  @click="joinAsSpectator = !joinAsSpectator"
+                >
+                  <span>Entrar apenas como espectador (não vota)</span>
+                  <span
+                    class="w-9 h-5 rounded-full p-0.5 flex items-center transition-colors"
+                    :style="{
+                      backgroundColor: joinAsSpectator
+                        ? 'var(--secondary)'
+                        : 'var(--border-card)',
+                      justifyContent: joinAsSpectator ? 'flex-end' : 'flex-start',
+                    }"
+                  >
+                    <span
+                      class="w-4 h-4 rounded-full"
+                      style="background-color: var(--color-primary);"
+                    />
+                  </span>
+                </button>
+              </form>
+            </div>
+
+            <div class="pt-2">
+              <BaseButton
+                type="submit"
+                form="join-room-form"
+                variant="secondary"
+                size="lg"
+                full-width
+              >
+                Entrar na Sala
+              </BaseButton>
+            </div>
+          </section>
+
+          <!-- Card 3: Sessoes Recentes no Navegador (Host) -->
+          <section
+            class="rounded-2xl p-5 sm:p-6 flex flex-col gap-3"
+            style="
+              background-color: var(--surface-card);
+              border: 1px solid var(--border-card);
+              box-shadow: var(--shadow-card);
+            "
+          >
+            <div class="flex items-center justify-between">
+              <span
+                class="text-[11px] font-semibold uppercase tracking-widest"
+                style="font-family: var(--font-mono); color: var(--secondary);"
+              >
+                03 // SESSÕES RECENTES NO NAVEGADOR (HOST)
+              </span>
+              <span
+                class="text-[11px]"
+                style="font-family: var(--font-mono); color: var(--text-secondary);"
+              >
+                {{ savedHostRooms.length }}
+                {{ savedHostRooms.length === 1 ? 'sala salva' : 'salas salvas' }}
               </span>
             </div>
 
-            <div class="flex items-center gap-2 shrink-0">
-              <BaseButton
-                size="sm"
-                variant="primary"
-                @click="handleResumeHostRoom(room.roomId)"
-              >
-                Retomar Sala
-              </BaseButton>
-              <button
-                type="button"
-                title="Remover sala salva"
-                class="text-slate-500 hover:text-rose-400 text-xs px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                @click="handleDeleteSavedRoom(room.roomId)"
-              >
-                ✕
-              </button>
+            <div
+              v-if="savedHostRooms.length === 0"
+              class="rounded-lg px-4 py-3 text-xs"
+              style="
+                background-color: var(--surface-subtle);
+                border: 1px solid var(--border-card);
+                color: var(--text-secondary);
+              "
+            >
+              Nenhuma sala de Host salva neste navegador. Quando você criar uma sala, ela ficará disponível aqui para retomada rápida.
             </div>
-          </div>
-        </div>
-      </section>
 
-      <!-- Grid: Criar Sala (Host) vs Entrar em Sala (Player) -->
-      <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Card 1: Criar Sala como Host -->
-        <section
-          class="rounded-2xl bg-slate-900/80 border border-slate-800 p-6 shadow-xl flex flex-col justify-between gap-6"
-        >
-          <div class="flex flex-col gap-1.5">
-            <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">
-              Nova Sessão
-            </span>
-            <h2 class="text-xl font-bold text-white">Criar Sala como Host</h2>
-            <p class="text-xs text-slate-400">
-              Escolha um dos seus baralhos salvos (ou um modelo padrão) e defina as tasks da sessão.
-            </p>
-          </div>
-
-          <form
-            class="flex flex-col gap-4"
-            @submit.prevent="handleCreateRoom"
-          >
-            <BaseInput
-              id="create-host-name"
-              v-model="hostName"
-              label="Seu Nome (Host)"
-              placeholder="Ex: Vitor Bruno"
-              :error="createError"
-            />
-
-            <!-- Selecao do Baralho + Gerenciar Baralhos vs + Baralho -->
-            <div class="flex flex-col gap-2">
-              <div class="flex items-center justify-between">
-                <label
-                  for="select-room-deck"
-                  class="text-xs font-medium uppercase tracking-wider text-slate-400"
-                >
-                  Baralho da Sala ({{ activeSelectedDeck.cards.length }} cartas)
-                </label>
-                <button
-                  type="button"
-                  class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-                  @click="openManageDecksModal"
-                >
-                  Gerenciar Baralhos
-                </button>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <select
-                  id="select-room-deck"
-                  v-model="selectedDeckId"
-                  class="flex-1 min-w-0 rounded-xl bg-slate-900/90 border border-slate-700/80 px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 cursor-pointer"
-                >
-                  <optgroup
-                    v-if="customDecks.length > 0"
-                    label="Meus Baralhos Salvos"
+            <div v-else class="flex flex-col gap-2.5 max-h-44 overflow-y-auto">
+              <div
+                v-for="room in savedHostRooms"
+                :key="room.roomId"
+                class="flex items-center justify-between gap-3 rounded-lg px-3.5 py-2.5"
+                style="
+                  background-color: var(--surface-subtle);
+                  border: 1px solid var(--border-card);
+                "
+              >
+                <div class="flex flex-col min-w-0 gap-0.5">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="px-1.5 py-0.5 rounded text-xs font-bold"
+                      style="
+                        font-family: var(--font-mono);
+                        background-color: var(--secondary-soft);
+                        border: 1px solid var(--secondary);
+                        color: var(--text-primary);
+                      "
+                    >
+                      #{{ room.roomId }}
+                    </span>
+                    <span
+                      class="text-[11px]"
+                      style="font-family: var(--font-mono); color: var(--text-secondary);"
+                    >
+                      • {{ room.tasks?.length || 0 }} tasks
+                    </span>
+                  </div>
+                  <span
+                    class="text-xs truncate"
+                    style="color: var(--text-secondary);"
                   >
-                    <option
-                      v-for="deck in customDecks"
-                      :key="deck.id"
-                      :value="deck.id"
-                    >
-                      ★ {{ deck.name }} ({{ deck.cards.join(', ') }})
-                    </option>
-                  </optgroup>
-                  <optgroup label="Baralhos Padrão">
-                    <option
-                      v-for="preset in DECK_PRESETS"
-                      :key="preset.id"
-                      :value="preset.id"
-                    >
-                      {{ preset.label }}
-                    </option>
-                  </optgroup>
-                </select>
+                    {{ room.storyTitle }}
+                  </span>
+                </div>
 
-                <BaseButton
-                  type="button"
-                  variant="secondary"
-                  size="md"
-                  @click="openCreateDeckModal"
-                >
-                  + Baralho
-                </BaseButton>
-              </div>
-
-              <!-- Previa somente-leitura das cartas do baralho selecionado -->
-              <div class="flex flex-wrap gap-1 pt-0.5">
-                <span
-                  v-for="card in activeSelectedDeck.cards"
-                  :key="card"
-                  class="px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-[11px] font-mono text-indigo-200"
-                >
-                  {{ card }}
-                </span>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <BaseButton
+                    size="sm"
+                    variant="outline"
+                    @click="handleResumeHostRoom(room.roomId)"
+                  >
+                    Retomar
+                  </BaseButton>
+                  <button
+                    type="button"
+                    title="Remover sala salva"
+                    class="px-2 py-1 rounded text-xs cursor-pointer transition-colors hover:text-rose-400"
+                    style="
+                      background-color: var(--surface-card);
+                      border: 1px solid var(--border-card);
+                      color: var(--text-muted);
+                    "
+                    @click="handleDeleteSavedRoom(room.roomId)"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div class="flex flex-col gap-1.5">
-              <label
-                for="create-tasks-list"
-                class="text-xs font-medium uppercase tracking-wider text-slate-400"
-              >
-                Lista de Tasks para Votação (1 por linha)
-              </label>
-              <textarea
-                id="create-tasks-list"
-                v-model="initialTasksText"
-                rows="3"
-                placeholder="US-01: Autenticação&#10;US-02: Checkout"
-                class="w-full rounded-xl bg-slate-900/90 border border-slate-700/80 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 transition-colors focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
-              />
-            </div>
-
-            <BaseButton type="submit" variant="primary" size="lg" full-width>
-              Criar Sala Agora
-            </BaseButton>
-          </form>
-        </section>
-
-        <!-- Card 2: Entrar em Sala Existente -->
-        <section
-          class="rounded-2xl bg-slate-900/80 border border-slate-800 p-6 shadow-xl flex flex-col justify-between gap-6"
-        >
-          <div class="flex flex-col gap-1.5">
-            <span class="text-xs font-bold uppercase tracking-wider text-emerald-400">
-              Participar
-            </span>
-            <h2 class="text-xl font-bold text-white">Entrar em uma Sala</h2>
-            <p class="text-xs text-slate-400">
-              Informe o código compartilhado pelo Host para conectar instantaneamente.
-            </p>
-          </div>
-
-          <form class="flex flex-col gap-4" @submit.prevent="handleJoinRoom">
-            <BaseInput
-              id="join-room-code"
-              v-model="roomCodeInput"
-              label="Código da Sala"
-              placeholder="Ex: A7K9X2"
-              :maxlength="12"
-            />
-
-            <BaseInput
-              id="join-player-name-lobby"
-              v-model="joinName"
-              label="Seu Nome"
-              placeholder="Ex: Gustavo"
-              :error="joinError"
-            />
-
-            <BaseButton type="submit" variant="emerald" size="lg" full-width>
-              Entrar na Sala
-            </BaseButton>
-          </form>
-        </section>
+          </section>
+        </div>
       </div>
 
-      <!-- Modal de Baralho (mode='create' para + Baralho, mode='manage' para Gerenciar Baralhos) -->
+      <!-- Modal de Baralho -->
       <DeckManagerPanel
         :open="isDeckModalOpen"
         :mode="deckModalMode"
@@ -460,3 +693,98 @@ function handleJoinRoom() {
     </div>
   </LobbyTemplate>
 </template>
+
+<style scoped>
+.ds-select,
+.ds-textarea {
+  background-color: var(--surface-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+
+.ds-textarea {
+  font-family: var(--font-mono);
+  line-height: 1.55;
+}
+
+.ds-select:focus,
+.ds-textarea:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px var(--secondary-soft);
+}
+
+.mini-poker-card {
+  width: 42px;
+  height: 56px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-card);
+  border-radius: 6px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mini-poker-card .c-top {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mini-poker-card .c-bot {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mini-poker-card.active {
+  border: 2px solid var(--card-active-border);
+  box-shadow: 0 0 0 2px var(--secondary-soft);
+  transform: translateY(-2px);
+}
+
+.mini-poker-card.back {
+  background-color: #1B253B;
+  color: #C5D5EA;
+  border-color: #1B253B;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.ds-cards-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.ds-cards-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.ds-cards-scroll::-webkit-scrollbar-track {
+  background-color: var(--bg-app);
+  border-radius: 999px;
+}
+
+.ds-cards-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--secondary);
+  border-radius: 999px;
+}
+
+.ds-cards-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-primary);
+}
+</style>

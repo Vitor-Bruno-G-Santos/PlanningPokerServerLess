@@ -1,22 +1,12 @@
 <template>
   <div
-    class="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-between relative overflow-hidden"
+    class="min-h-screen w-full flex flex-col justify-between relative overflow-x-hidden"
+    style="background-color: var(--bg-app); color: var(--text-primary);"
   >
-    <!-- Glow decorativo de fundo -->
-    <div
-      class="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[680px] h-[360px] bg-indigo-600/15 blur-[130px] rounded-full"
-    />
-
     <main
-      class="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-12"
+      class="relative z-10 flex-1 flex flex-col items-center w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8"
     >
       <slot />
     </main>
-
-    <footer
-      class="relative z-10 py-4 text-center text-xs text-slate-500 border-t border-slate-900"
-    >
-      Planning Poker Serverless • Cloudflare Durable Objects (WebSocket Hibernation) + Host Source of Truth
-    </footer>
   </div>
 </template>

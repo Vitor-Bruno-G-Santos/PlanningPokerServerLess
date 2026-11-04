@@ -8,6 +8,7 @@ interface Props {
   disabled?: boolean;
   autofocus?: boolean;
   error?: string;
+  mono?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
@@ -18,6 +19,7 @@ withDefaults(defineProps<Props>(), {
   disabled: false,
   autofocus: false,
   error: '',
+  mono: false,
 });
 
 const emit = defineEmits<{
@@ -36,7 +38,8 @@ function onInput(event: Event) {
     <label
       v-if="label"
       :for="id"
-      class="text-xs font-medium uppercase tracking-wider text-slate-400"
+      class="text-xs font-semibold uppercase tracking-wider"
+      style="color: var(--text-secondary);"
     >
       {{ label }}
     </label>
@@ -48,10 +51,27 @@ function onInput(event: Event) {
       :maxlength="maxlength"
       :disabled="disabled"
       :autofocus="autofocus"
-      class="w-full rounded-xl bg-slate-900/90 border border-slate-700/80 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition-colors focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50"
+      class="ds-input w-full px-3.5 py-2.5 text-sm transition-all focus:outline-none disabled:opacity-50"
+      :class="[mono ? 'font-mono text-lg font-bold tracking-[0.22em] uppercase text-center' : '']"
       @input="onInput"
       @keydown.enter="emit('enter')"
     />
-    <p v-if="error" class="text-xs text-rose-400">{{ error }}</p>
+    <p v-if="error" class="text-xs text-rose-500 font-medium">{{ error }}</p>
   </div>
 </template>
+
+<style scoped>
+.ds-input {
+  background-color: var(--surface-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+.ds-input::placeholder {
+  color: var(--text-muted);
+}
+.ds-input:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px var(--secondary-soft);
+}
+</style>

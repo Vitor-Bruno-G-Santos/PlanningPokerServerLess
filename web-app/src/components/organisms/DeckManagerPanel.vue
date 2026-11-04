@@ -158,40 +158,53 @@ function resetForm() {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto"
       @click.self="emit('close')"
     >
       <section
-        class="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl flex flex-col gap-5 my-auto"
+        class="w-full max-w-lg rounded-2xl p-6 flex flex-col gap-5 my-auto"
+        style="
+          background-color: var(--surface-card);
+          border: 1px solid var(--border-card);
+          color: var(--text-primary);
+          box-shadow: var(--shadow-card);
+        "
       >
         <!-- Header do Modal -->
         <div
-          class="flex items-start justify-between gap-3 border-b border-slate-800/80 pb-4"
+          class="flex items-start justify-between gap-3 border-b border-dashed pb-4"
+          style="border-color: var(--border-dashed);"
         >
           <div class="flex flex-col gap-1">
-            <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">
+            <span
+              class="text-[11px] font-semibold uppercase tracking-widest"
+              style="font-family: var(--font-mono); color: var(--secondary);"
+            >
               <template v-if="mode === 'create'">
-                Novo Baralho Personalizado
+                NOVO BARALHO PERSONALIZADO
               </template>
               <template v-else-if="editingDeck">
-                Editar Baralho Salvo
+                EDITAR BARALHO SALVO
               </template>
               <template v-else>
-                Biblioteca do Navegador
+                BIBLIOTECA DO NAVEGADOR
               </template>
             </span>
-            <h2 class="text-xl font-bold text-white">
+            <h2
+              class="text-xl font-bold uppercase tracking-wide"
+              style="font-family: var(--font-display);"
+            >
               <template v-if="mode === 'create'">
-                Criar Baralho
+                CRIAR BARALHO
               </template>
               <template v-else-if="editingDeck">
-                Editando "{{ editingDeck.name }}"
+                EDITANDO "{{ editingDeck.name }}"
               </template>
               <template v-else>
-                Gerenciar Baralhos Salvos
+                GERENCIAR BARALHOS SALVOS
               </template>
             </h2>
-            <p class="text-xs text-slate-400">
+            <p class="text-xs" style="color: var(--text-secondary);">
               <template v-if="mode === 'create'">
                 Dê um nome e defina as cartas. Ele ficará salvo no seu navegador.
               </template>
@@ -204,16 +217,17 @@ function resetForm() {
             </p>
           </div>
 
-          <button
+          <BaseButton
             type="button"
-            class="rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer"
+            variant="outline"
+            size="sm"
             @click="emit('close')"
           >
             ✕
-          </button>
+          </BaseButton>
         </div>
 
-        <!-- MODO 1: CRIAR NOVO BARALHO (ou editando um baralho a partir do Gerenciar) -->
+        <!-- MODO 1: CRIAR NOVO BARALHO -->
         <form
           v-if="isShowingForm"
           class="flex flex-col gap-4"
@@ -227,43 +241,60 @@ function resetForm() {
             :error="formError"
           />
 
-          <!-- Ponto de partida rapido -->
           <div class="flex flex-col gap-1.5">
-            <span class="text-[11px] font-medium uppercase tracking-wider text-slate-400">
+            <span
+              class="text-[11px] font-semibold uppercase tracking-wider"
+              style="color: var(--text-secondary);"
+            >
               Basear em um modelo (opcional)
             </span>
             <div class="flex flex-wrap gap-1.5">
-              <button
+              <BaseButton
                 v-for="preset in DECK_PRESETS"
                 :key="preset.id"
                 type="button"
-                class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-indigo-600/25 text-slate-300 hover:text-indigo-200 border border-slate-800 hover:border-indigo-500/40 transition-colors cursor-pointer"
+                variant="outline"
+                size="sm"
                 @click="applyTemplateCards(preset.cards)"
               >
                 {{ preset.label.split(' (')[0] }}
-              </button>
+              </BaseButton>
             </div>
           </div>
 
           <!-- Preview visual de cartas + adicionar carta individual -->
           <div class="flex flex-col gap-2">
-            <span class="text-[11px] font-medium uppercase tracking-wider text-slate-400">
+            <span
+              class="text-[11px] font-semibold uppercase tracking-wider"
+              style="color: var(--text-secondary);"
+            >
               Cartas ({{ parsedCardsPreview.length }} — clique no × para remover)
             </span>
 
             <div
-              class="flex flex-wrap items-center gap-1.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800/90 min-h-[52px]"
+              class="flex flex-wrap items-center gap-1.5 p-3 rounded-lg min-h-[52px]"
+              style="
+                background-color: var(--surface-subtle);
+                border: 1px solid var(--border-card);
+              "
             >
               <span
                 v-for="card in parsedCardsPreview"
                 :key="card"
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/80 border border-indigo-500/40 text-xs font-bold text-indigo-200 shadow-sm"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold"
+                style="
+                  font-family: var(--font-mono);
+                  background-color: var(--surface-card);
+                  border: 1px solid var(--secondary);
+                  color: var(--text-primary);
+                "
               >
                 {{ card }}
                 <button
                   v-if="parsedCardsPreview.length > 1"
                   type="button"
-                  class="text-indigo-400 hover:text-rose-400 cursor-pointer leading-none"
+                  class="hover:text-rose-500 cursor-pointer leading-none"
+                  style="color: var(--secondary);"
                   title="Remover carta"
                   @click="removeCardFromPreview(card)"
                 >
@@ -271,22 +302,28 @@ function resetForm() {
                 </button>
               </span>
 
-              <div class="inline-flex items-center gap-1 ml-1">
+              <div class="inline-flex items-center gap-1.5 ml-1">
                 <input
                   v-model="singleCardInput"
                   type="text"
                   maxlength="8"
                   placeholder="+ carta"
-                  class="w-20 rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  class="w-20 rounded px-2 py-1 text-xs focus:outline-none"
+                  style="
+                    background-color: var(--surface-input);
+                    border: 1px solid var(--border-card);
+                    color: var(--text-primary);
+                  "
                   @keydown.enter.prevent="addSingleCard"
                 />
-                <button
+                <BaseButton
                   type="button"
-                  class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 font-semibold cursor-pointer"
+                  variant="outline"
+                  size="sm"
                   @click="addSingleCard"
                 >
                   Add
-                </button>
+                </BaseButton>
               </div>
             </div>
           </div>
@@ -295,7 +332,8 @@ function resetForm() {
           <div class="flex flex-col gap-1">
             <label
               for="custom-deck-raw-input"
-              class="text-[11px] font-medium uppercase tracking-wider text-slate-400"
+              class="text-[11px] font-semibold uppercase tracking-wider"
+              style="color: var(--text-secondary);"
             >
               Ou digite as cartas separadas por vírgula
             </label>
@@ -303,7 +341,12 @@ function resetForm() {
               id="custom-deck-raw-input"
               v-model="deckCardsRaw"
               type="text"
-              class="w-full rounded-xl bg-slate-950/90 border border-slate-700/80 px-3.5 py-2 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              class="w-full rounded-lg px-3.5 py-2 text-xs font-mono focus:outline-none"
+              style="
+                background-color: var(--surface-input);
+                border: 1px solid var(--border-card);
+                color: var(--text-primary);
+              "
               placeholder="0, 1, 2, 3, 5, 8, 13, ?, ☕"
             />
           </div>
@@ -333,16 +376,20 @@ function resetForm() {
           </div>
         </form>
 
-        <!-- MODO 2: GERENCIAR BARALHOS SALVOS (Apenas a lista de baralhos ja salvos) -->
+        <!-- MODO 2: GERENCIAR BARALHOS SALVOS -->
         <div v-else class="flex flex-col gap-4">
           <div
             v-if="customDecks.length === 0"
-            class="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-8 flex flex-col items-center justify-center text-center gap-2"
+            class="rounded-xl border border-dashed p-8 flex flex-col items-center justify-center text-center gap-2"
+            style="
+              border-color: var(--border-dashed);
+              background-color: var(--surface-subtle);
+            "
           >
-            <span class="text-sm font-semibold text-slate-300">
+            <span class="text-sm font-semibold">
               Você ainda não tem baralhos salvos
             </span>
-            <p class="text-xs text-slate-500 max-w-xs">
+            <p class="text-xs max-w-xs" style="color: var(--text-secondary);">
               Use o botão "+ Baralho" para criar seu primeiro baralho personalizado.
             </p>
           </div>
@@ -354,51 +401,53 @@ function resetForm() {
             <div
               v-for="deck in customDecks"
               :key="deck.id"
-              class="rounded-xl p-4 border transition-colors flex flex-col gap-2.5"
-              :class="
-                selectedDeckId === deck.id
-                  ? 'bg-indigo-950/40 border-indigo-500/60'
-                  : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
-              "
+              class="rounded-xl p-4 flex flex-col gap-2.5"
+              :style="{
+                backgroundColor: 'var(--surface-subtle)',
+                border:
+                  selectedDeckId === deck.id
+                    ? '2px solid var(--card-active-border)'
+                    : '1px solid var(--border-card)',
+              }"
             >
               <div class="flex items-start justify-between gap-2">
                 <div class="flex items-center gap-2 min-w-0">
-                  <span class="text-sm font-bold text-white truncate">
+                  <span class="text-sm font-bold truncate">
                     {{ deck.name }}
                   </span>
-                  <span class="text-[11px] text-slate-400 shrink-0">
+                  <span
+                    class="text-[11px] shrink-0"
+                    style="font-family: var(--font-mono); color: var(--text-secondary);"
+                  >
                     ({{ deck.cards.length }} cartas)
                   </span>
                 </div>
 
                 <div class="flex items-center gap-1.5 shrink-0">
-                  <button
+                  <BaseButton
                     type="button"
-                    class="text-xs px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer"
-                    :class="
-                      selectedDeckId === deck.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-800 hover:bg-indigo-600/30 text-indigo-300'
-                    "
+                    :variant="selectedDeckId === deck.id ? 'primary' : 'outline'"
+                    size="sm"
                     @click="handleUseDeck(deck)"
                   >
                     {{ selectedDeckId === deck.id ? 'Selecionado' : 'Selecionar' }}
-                  </button>
-                  <button
+                  </BaseButton>
+                  <BaseButton
                     type="button"
-                    class="text-xs px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 cursor-pointer"
+                    variant="outline"
+                    size="sm"
                     @click="startEditFromManage(deck)"
                   >
                     Editar
-                  </button>
-                  <button
+                  </BaseButton>
+                  <BaseButton
                     type="button"
-                    class="text-xs px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 cursor-pointer"
-                    title="Excluir baralho"
+                    variant="outline"
+                    size="sm"
                     @click="handleDeleteDeck(deck.id)"
                   >
                     Excluir
-                  </button>
+                  </BaseButton>
                 </div>
               </div>
 
@@ -406,7 +455,12 @@ function resetForm() {
                 <span
                   v-for="card in deck.cards"
                   :key="card"
-                  class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300"
+                  class="px-2 py-0.5 rounded text-[11px] font-mono"
+                  style="
+                    background-color: var(--surface-card);
+                    border: 1px solid var(--border-card);
+                    color: var(--text-secondary);
+                  "
                 >
                   {{ card }}
                 </span>
@@ -417,7 +471,7 @@ function resetForm() {
           <div class="flex items-center justify-end pt-1">
             <BaseButton
               type="button"
-              variant="secondary"
+              variant="outline"
               size="sm"
               @click="emit('close')"
             >
