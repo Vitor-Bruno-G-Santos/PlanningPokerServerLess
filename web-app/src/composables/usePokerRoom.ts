@@ -12,12 +12,16 @@ import {
   type VoteValue,
 } from '@shared/types';
 import {
-  getOrCreatePlayerId,
+  canTabClaimHost,
+  claimHostTabLock,
+  clearHostRoomState,
+  getOrCreateHostToken,
   getSavedPlayerName,
   getSavedSpectatorFlag,
-  isStoredHostForRoom,
   loadHostRoomState,
   loadOwnVote,
+  releaseHostTabLock,
+  resolvePlayerIdForRoom,
   saveHostRoomState,
   saveOwnVote,
   savePlayerName,
@@ -28,7 +32,6 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'di
 
 export interface UsePokerRoomOptions {
   roomId: string;
-  initialRole?: Role;
 }
 
 function computeTaskEstimate(state: RoomState): string | null {
@@ -65,15 +68,14 @@ function computeTaskEstimate(state: RoomState): string | null {
 
 export function usePokerRoom(options: UsePokerRoomOptions) {
   const normalizedRoomId = options.roomId.toUpperCase();
-  const playerId = getOrCreatePlayerId();
-  const playerName = ref<string>(getSavedPlayerName());
-  const isSpectator = ref<boolean>(getSavedSpectatorFlag());
-  const myVote = ref<VoteValue | null>(loadOwnVote(normalizedRoomId));
 
-  // Determina se esta aba e o Host (ou porque criou a sala agora, ou porque reidratou no F5)
-  const isHost = ref<boolean>(
-    options.initialRole === 'host' || isStoredHostForRoom(normalizedRoomId, playerId)
-  );
+  // Determina se esta aba possui a credencial legitima de Host no localStorage
+  // e se nao ha outra aba deste mesmo navegador atuando como Host.
+  const isHost = ref<boolean>(canTabClaimHost(normalizedRoomId));
+  const playerId = resolvePlayerIdForRoom(normalizedRoomId);
+  const playerName = ref<string>(getSavedPlayerName(normalizedRoomId));
+  const isSpectator = ref<boolean>(getSavedSpectatorFlag());
+  const myVote = ref<VoteValue | null>(loadOwnVote(normalizedRoomId, playerId));
 
   // Estado bruto (exclusivo do Host, contem votos abertos antes do reveal)
   const hostRawState = ref<RoomState | null>(null);
@@ -83,16 +85,35 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
   const connectionStatus = ref<ConnectionStatus>('disconnected');
   const hostOnline = ref<boolean>(true);
+  const roomClosed = ref<boolean>(false);
   const lastError = ref<string | null>(null);
 
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let pingInterval: ReturnType<typeof setInterval> | null = null;
+  let hostLockInterval: ReturnType<typeof setInterval> | null = null;
   let isUnmounted = false;
   let reconnectAttempts = 0;
 
+  function handleWindowUnload(): void {
+    if (isHost.value) {
+      releaseHostTabLock(normalizedRoomId);
+    }
+  }
+
+  if (typeof window !== 'undefined' && isHost.value) {
+    claimHostTabLock(normalizedRoomId);
+    hostLockInterval = setInterval(() => {
+      if (isHost.value) {
+        claimHostTabLock(normalizedRoomId);
+      }
+    }, 2000);
+    window.addEventListener('pagehide', handleWindowUnload);
+    window.addEventListener('beforeunload', handleWindowUnload);
+  }
+
   /**
-   * Inicializa ou reidrata o estado bruto do Host no sessionStorage.
+   * Inicializa ou reidrata o estado bruto do Host no localStorage.
    */
   function initOrHydrateHostState(hostDisplayName: string, spectator = false): RoomState {
     const hydrated = loadHostRoomState(normalizedRoomId);
@@ -116,6 +137,10 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
         hydrated.players[playerId].connected = true;
         if (hostDisplayName) {
           hydrated.players[playerId].name = hostDisplayName;
+        }
+        if (hydrated.players[playerId].vote !== null && myVote.value === null) {
+          myVote.value = hydrated.players[playerId].vote;
+          saveOwnVote(normalizedRoomId, playerId, myVote.value);
         }
       } else {
         hydrated.players[playerId] = {
@@ -187,6 +212,10 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       playerId,
     });
 
+    if (role === 'host') {
+      params.set('hostToken', getOrCreateHostToken(normalizedRoomId));
+    }
+
     return `${baseUrl}/ws/${encodeURIComponent(normalizedRoomId)}?${params.toString()}`;
   }
 
@@ -204,7 +233,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       player.hasVoted = false;
     }
     myVote.value = null;
-    saveOwnVote(normalizedRoomId, null);
+    saveOwnVote(normalizedRoomId, playerId, null);
   }
 
   function syncAndBroadcastHostState(): void {
@@ -332,15 +361,19 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
         publicRoomState.value = msg.state;
 
         // Se o baralho mudou e o voto local nao faz mais parte do baralho, limpa
-        if (myVote.value !== null && Array.isArray(msg.state.deck) && !msg.state.deck.includes(myVote.value)) {
+        if (
+          myVote.value !== null &&
+          Array.isArray(msg.state.deck) &&
+          !msg.state.deck.includes(myVote.value)
+        ) {
           myVote.value = null;
-          saveOwnVote(normalizedRoomId, null);
+          saveOwnVote(normalizedRoomId, playerId, null);
         }
 
         const meInRoom = msg.state.players[playerId];
         if (meInRoom && !meInRoom.hasVoted && !msg.state.revealed) {
           myVote.value = null;
-          saveOwnVote(normalizedRoomId, null);
+          saveOwnVote(normalizedRoomId, playerId, null);
         } else if (meInRoom && msg.state.revealed && meInRoom.vote !== null) {
           myVote.value = meInRoom.vote;
         }
@@ -350,6 +383,17 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       case 'CLIENT_ACTION': {
         if (isHost.value) {
           applyClientActionOnHost(msg.payload);
+        }
+        break;
+      }
+
+      case 'ACTIVE_PLAYERS_SYNC': {
+        if (isHost.value && hostRawState.value) {
+          const activeSet = new Set(msg.playerIds);
+          for (const p of Object.values(hostRawState.value.players)) {
+            p.connected = p.id === hostRawState.value.hostId || activeSet.has(p.id);
+          }
+          syncAndBroadcastHostState();
         }
         break;
       }
@@ -388,6 +432,15 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
       case 'HOST_DISCONNECTED': {
         hostOnline.value = false;
+        break;
+      }
+
+      case 'ROOM_CLOSED': {
+        isUnmounted = true;
+        roomClosed.value = true;
+        clearHostRoomState(normalizedRoomId);
+        saveOwnVote(normalizedRoomId, playerId, null);
+        disconnect();
         break;
       }
 
@@ -449,11 +502,18 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
     ws.onmessage = handleIncomingMessage;
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
       connectionStatus.value = 'disconnected';
       if (pingInterval) {
         clearInterval(pingInterval);
         pingInterval = null;
+      }
+      if (event.code === 4000) {
+        isUnmounted = true;
+        roomClosed.value = true;
+        clearHostRoomState(normalizedRoomId);
+        saveOwnVote(normalizedRoomId, playerId, null);
+        return;
       }
       if (!isUnmounted) {
         const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 8000);
@@ -515,7 +575,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     if (isSpectator.value) return;
     const nextVote = myVote.value === vote ? null : vote;
     myVote.value = nextVote;
-    saveOwnVote(normalizedRoomId, nextVote);
+    saveOwnVote(normalizedRoomId, playerId, nextVote);
 
     dispatchPlayerAction({
       action: 'CAST_VOTE',
@@ -530,7 +590,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     saveSpectatorFlag(next);
     if (next) {
       myVote.value = null;
-      saveOwnVote(normalizedRoomId, null);
+      saveOwnVote(normalizedRoomId, playerId, null);
     }
     dispatchPlayerAction({
       action: 'TOGGLE_SPECTATOR',
@@ -579,7 +639,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
     if (myVote.value !== null && !nextDeck.includes(myVote.value)) {
       myVote.value = null;
-      saveOwnVote(normalizedRoomId, null);
+      saveOwnVote(normalizedRoomId, playerId, null);
     }
 
     syncAndBroadcastHostState();
@@ -700,6 +760,16 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     syncAndBroadcastHostState();
   }
 
+  function closeRoom(): void {
+    if (!isHost.value) return;
+    sendRawMessage({ type: 'CLOSE_ROOM' });
+    isUnmounted = true;
+    roomClosed.value = true;
+    clearHostRoomState(normalizedRoomId);
+    saveOwnVote(normalizedRoomId, playerId, null);
+    disconnect();
+  }
+
   const currentPlayer = computed(() => {
     return publicRoomState.value?.players[playerId] ?? null;
   });
@@ -710,6 +780,17 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
   onUnmounted(() => {
     isUnmounted = true;
+    if (hostLockInterval) {
+      clearInterval(hostLockInterval);
+      hostLockInterval = null;
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', handleWindowUnload);
+      window.removeEventListener('beforeunload', handleWindowUnload);
+    }
+    if (isHost.value) {
+      releaseHostTabLock(normalizedRoomId);
+    }
     disconnect();
   });
 
@@ -724,6 +805,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     currentPlayer,
     connectionStatus,
     hostOnline,
+    roomClosed,
     lastError,
     needsNamePrompt,
     connect,
@@ -738,5 +820,6 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     removeTask,
     revealVotes,
     startNewRound,
+    closeRoom,
   };
 }

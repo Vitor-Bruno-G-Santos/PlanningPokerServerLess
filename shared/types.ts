@@ -148,6 +148,9 @@ export type ClientToRelayMessage =
       state: RoomState;
     }
   | {
+      type: 'CLOSE_ROOM';
+    }
+  | {
       type: 'PING';
     };
 
@@ -172,6 +175,13 @@ export type RelayToClientMessage =
   | {
       type: 'PLAYER_DISCONNECTED';
       playerId: string;
+    }
+  | {
+      type: 'ACTIVE_PLAYERS_SYNC';
+      playerIds: string[];
+    }
+  | {
+      type: 'ROOM_CLOSED';
     }
   | {
       type: 'PONG';

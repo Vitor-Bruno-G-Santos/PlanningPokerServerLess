@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { DEFAULT_DECK, type Role } from '@shared/types';
+import { DEFAULT_DECK } from '@shared/types';
 import { usePokerRoom } from '@/composables/usePokerRoom';
 import { usePokerStats } from '@/composables/usePokerStats';
 import GameRoomTemplate from '@/components/templates/GameRoomTemplate.vue';
@@ -17,8 +17,15 @@ const route = useRoute();
 const router = useRouter();
 
 const roomIdParam = String(route.params.roomId || 'DEFAULT').toUpperCase();
-const initialRole: Role | undefined =
-  route.query.role === 'host' ? 'host' : undefined;
+
+// Remove qualquer ?role=host da URL para evitar compartilhamento acidental ou tentativa de uso via query string
+if (route.query.role !== undefined) {
+  router.replace({
+    name: 'room',
+    params: { roomId: roomIdParam },
+    query: {},
+  });
+}
 
 const {
   roomId,
@@ -30,6 +37,7 @@ const {
   roomState,
   connectionStatus,
   hostOnline,
+  roomClosed,
   lastError,
   needsNamePrompt,
   connect,
@@ -43,9 +51,15 @@ const {
   removeTask,
   revealVotes,
   startNewRound,
+  closeRoom,
 } = usePokerRoom({
   roomId: roomIdParam,
-  initialRole,
+});
+
+watch(roomClosed, (closed) => {
+  if (closed) {
+    router.push({ name: 'lobby' });
+  }
 });
 
 const { playersList, stats } = usePokerStats(roomState);
@@ -70,6 +84,11 @@ function handleModalSubmit(payload: { name: string; isSpectator: boolean }) {
 function handleLeaveRoom() {
   router.push({ name: 'lobby' });
 }
+
+function handleCloseRoom() {
+  closeRoom();
+  router.push({ name: 'lobby' });
+}
 </script>
 
 <template>
@@ -84,6 +103,7 @@ function handleLeaveRoom() {
         :host-online="hostOnline"
         @toggle-spectator="toggleSpectator"
         @leave-room="handleLeaveRoom"
+        @close-room="handleCloseRoom"
       />
     </template>
 

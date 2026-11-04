@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import LobbyTemplate from '@/components/templates/LobbyTemplate.vue';
 import BaseButton from '@/components/atoms/BaseButton.vue';
 import BaseInput from '@/components/atoms/BaseInput.vue';
 import BaseBadge from '@/components/atoms/BaseBadge.vue';
 import {
+  claimHostTabLock,
+  clearHostRoomState,
   generateRoomCode,
+  getOrCreateHostToken,
   getOrCreatePlayerId,
   getSavedPlayerName,
+  listSavedHostRooms,
   saveHostRoomState,
   savePlayerName,
   saveSpectatorFlag,
@@ -34,6 +38,16 @@ const joinName = ref(getSavedPlayerName());
 const roomCodeInput = ref('');
 const createError = ref('');
 const joinError = ref('');
+
+const savedHostRooms = ref<RoomState[]>([]);
+
+function refreshSavedHostRooms() {
+  savedHostRooms.value = listSavedHostRooms();
+}
+
+onMounted(() => {
+  refreshSavedHostRooms();
+});
 
 function handlePresetChange(presetId: string) {
   selectedPresetId.value = presetId;
@@ -96,13 +110,27 @@ function handleCreateRoom() {
     },
   };
 
+  getOrCreateHostToken(roomId);
   saveHostRoomState(roomId, initialRoomState);
+  claimHostTabLock(roomId);
 
   router.push({
     name: 'room',
     params: { roomId },
-    query: { role: 'host' },
   });
+}
+
+function handleResumeHostRoom(roomId: string) {
+  claimHostTabLock(roomId);
+  router.push({
+    name: 'room',
+    params: { roomId },
+  });
+}
+
+function handleDeleteSavedRoom(roomId: string) {
+  clearHostRoomState(roomId);
+  refreshSavedHostRooms();
 }
 
 function handleJoinRoom() {
@@ -143,10 +171,68 @@ function handleJoinRoom() {
         </h1>
         <p class="text-sm sm:text-base text-slate-400">
           Sem banco de dados tradicional: o navegador do Host mantém a verdade absoluta no
-          <code class="text-indigo-300">sessionStorage</code> e o Cloudflare Durable Object
+          <code class="text-indigo-300">localStorage</code> e o Cloudflare Durable Object
           transmite apenas votos mascarados.
         </p>
       </div>
+
+      <!-- Salas Recentes do Host (Permite retomar apos fechar o navegador) -->
+      <section
+        v-if="savedHostRooms.length > 0"
+        class="w-full rounded-2xl bg-indigo-950/30 border border-indigo-500/30 p-5 shadow-xl flex flex-col gap-3"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <BaseBadge tone="amber">Host</BaseBadge>
+            <h2 class="text-sm font-bold text-white">
+              Suas Salas Salvas (Retomar após fechar o navegador)
+            </h2>
+          </div>
+          <span class="text-xs text-slate-400">
+            {{ savedHostRooms.length }} {{ savedHostRooms.length === 1 ? 'sala' : 'salas' }}
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div
+            v-for="room in savedHostRooms"
+            :key="room.roomId"
+            class="flex items-center justify-between gap-3 rounded-xl bg-slate-900/90 border border-slate-800 px-4 py-3"
+          >
+            <div class="flex flex-col min-w-0">
+              <div class="flex items-center gap-2">
+                <code class="text-xs font-mono font-bold text-indigo-300">
+                  {{ room.roomId }}
+                </code>
+                <span class="text-[11px] text-slate-400">
+                  • {{ room.tasks?.length || 0 }} tasks
+                </span>
+              </div>
+              <span class="text-xs text-slate-200 truncate">
+                {{ room.storyTitle }}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-2 shrink-0">
+              <BaseButton
+                size="sm"
+                variant="primary"
+                @click="handleResumeHostRoom(room.roomId)"
+              >
+                Retomar Sala
+              </BaseButton>
+              <button
+                type="button"
+                title="Remover sala salva"
+                class="text-slate-500 hover:text-rose-400 text-xs px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                @click="handleDeleteSavedRoom(room.roomId)"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <!-- Grid: Criar Sala (Host) vs Entrar em Sala (Player) -->
       <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-6">

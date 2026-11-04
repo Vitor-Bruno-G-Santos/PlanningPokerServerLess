@@ -18,6 +18,7 @@ defineProps<Props>();
 const emit = defineEmits<{
   toggleSpectator: [];
   leaveRoom: [];
+  closeRoom: [];
 }>();
 </script>
 
@@ -89,6 +90,15 @@ const emit = defineEmits<{
           @click="emit('toggleSpectator')"
         >
           {{ isSpectator ? 'Modo Espectador (Ativo)' : 'Virar Espectador' }}
+        </BaseButton>
+
+        <BaseButton
+          v-if="isHost"
+          size="sm"
+          variant="danger"
+          @click="emit('closeRoom')"
+        >
+          Encerrar Sala
         </BaseButton>
       </div>
     </div>
