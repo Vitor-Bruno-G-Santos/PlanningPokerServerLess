@@ -96,8 +96,46 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let pingInterval: ReturnType<typeof setInterval> | null = null;
   let hostLockInterval: ReturnType<typeof setInterval> | null = null;
+  const playerDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const DISCONNECT_GRACE_PERIOD_MS = 20_000;
   let isUnmounted = false;
   let reconnectAttempts = 0;
+
+  function cancelPlayerRemoval(targetPlayerId: string): void {
+    const timer = playerDisconnectTimers.get(targetPlayerId);
+    if (timer) {
+      clearTimeout(timer);
+      playerDisconnectTimers.delete(targetPlayerId);
+    }
+  }
+
+  function schedulePlayerRemoval(targetPlayerId: string): void {
+    cancelPlayerRemoval(targetPlayerId);
+
+    const timer = setTimeout(() => {
+      playerDisconnectTimers.delete(targetPlayerId);
+      if (!isHost.value || !hostRawState.value) return;
+
+      const target = hostRawState.value.players[targetPlayerId];
+      if (
+        target &&
+        !target.connected &&
+        targetPlayerId !== hostRawState.value.hostId
+      ) {
+        delete hostRawState.value.players[targetPlayerId];
+        syncAndBroadcastHostState();
+      }
+    }, DISCONNECT_GRACE_PERIOD_MS);
+
+    playerDisconnectTimers.set(targetPlayerId, timer);
+  }
+
+  function clearAllPlayerDisconnectTimers(): void {
+    for (const timer of playerDisconnectTimers.values()) {
+      clearTimeout(timer);
+    }
+    playerDisconnectTimers.clear();
+  }
 
   function handleWindowUnload(): void {
     if (isHost.value) {
@@ -280,6 +318,8 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       return;
     }
 
+    cancelPlayerRemoval(payload.playerId);
+
     const state = hostRawState.value;
 
     switch (payload.action) {
@@ -403,7 +443,13 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
         if (isHost.value && hostRawState.value) {
           const activeSet = new Set(msg.playerIds);
           for (const p of Object.values(hostRawState.value.players)) {
-            p.connected = p.id === hostRawState.value.hostId || activeSet.has(p.id);
+            const isConnected = p.id === hostRawState.value.hostId || activeSet.has(p.id);
+            p.connected = isConnected;
+            if (!isConnected && p.id !== hostRawState.value.hostId) {
+              schedulePlayerRemoval(p.id);
+            } else {
+              cancelPlayerRemoval(p.id);
+            }
           }
           syncAndBroadcastHostState();
         }
@@ -413,8 +459,9 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       case 'PLAYER_DISCONNECTED': {
         if (isHost.value && hostRawState.value) {
           const target = hostRawState.value.players[msg.playerId];
-          if (target) {
+          if (target && msg.playerId !== hostRawState.value.hostId) {
             target.connected = false;
+            schedulePlayerRemoval(msg.playerId);
             syncAndBroadcastHostState();
           }
         }
@@ -450,6 +497,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       case 'ROOM_CLOSED': {
         isUnmounted = true;
         roomClosed.value = true;
+        clearAllPlayerDisconnectTimers();
         clearHostRoomState(normalizedRoomId);
         saveOwnVote(normalizedRoomId, playerId, null);
         disconnect();
@@ -811,6 +859,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
   onUnmounted(() => {
     isUnmounted = true;
+    clearAllPlayerDisconnectTimers();
     if (hostLockInterval) {
       clearInterval(hostLockInterval);
       hostLockInterval = null;

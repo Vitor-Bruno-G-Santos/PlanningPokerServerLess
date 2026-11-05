@@ -88,6 +88,7 @@ function getCardStateClass(player: Player): string {
         :class="{
           'is-self': voter.id === currentPlayerId,
           'is-host-peer': voter.isHost && voter.id !== currentPlayerId,
+          'is-disconnected': !voter.connected,
         }"
       >
         <span
@@ -124,9 +125,12 @@ function getCardStateClass(player: Player): string {
           </div>
           <span
             class="voter-status"
-            :class="{ done: voter.hasVoted }"
+            :class="{ done: voter.hasVoted && voter.connected, disconnected: !voter.connected }"
           >
-            <template v-if="voter.hasVoted">VOTOU</template>
+            <template v-if="!voter.connected">
+              {{ voter.hasVoted ? 'VOTOU (OFFLINE)' : 'RECONECTANDO...' }}
+            </template>
+            <template v-else-if="voter.hasVoted">VOTOU</template>
             <template v-else-if="revealed">NÃO VOTOU</template>
             <template v-else>PENSANDO...</template>
           </span>
@@ -215,6 +219,12 @@ function getCardStateClass(player: Player): string {
 
 .voter-slot.is-host-peer {
   border: 1.5px solid var(--secondary);
+}
+
+.voter-slot.is-disconnected {
+  opacity: 0.55;
+  filter: grayscale(0.35);
+  border-style: dashed;
 }
 
 .voter-you-tag {
@@ -357,5 +367,10 @@ function getCardStateClass(player: Player): string {
 
 .voter-status.done {
   color: var(--success);
+}
+
+.voter-status.disconnected {
+  color: var(--text-muted);
+  font-style: italic;
 }
 </style>
