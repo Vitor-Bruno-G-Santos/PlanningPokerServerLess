@@ -6,6 +6,7 @@ interface Props {
   storyTitle: string;
   isHost: boolean;
   revealed: boolean;
+  isAnonymous?: boolean;
   totalVoted: number;
   totalActivePlayers: number;
   activePlayers?: Player[];
@@ -14,6 +15,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  isAnonymous: false,
   activePlayers: () => [],
   deck: () => [],
   isLastTask: false,
@@ -204,7 +206,7 @@ function confirmForceReveal() {
       </h3>
       <p class="modal-desc">
         Apenas <strong>{{ totalVoted }} de {{ totalActivePlayers }} participantes</strong> escolheram uma carta.
-        <template v-if="pendingPlayerNames.length > 0">
+        <template v-if="!isAnonymous && pendingPlayerNames.length > 0">
           <strong>{{ pendingPlayerNames.join(', ') }}</strong> ainda
           {{ pendingPlayerNames.length === 1 ? 'não finalizou' : 'não finalizaram' }} o voto.
         </template>

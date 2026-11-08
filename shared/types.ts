@@ -100,6 +100,7 @@ export interface RoomState {
   tasks: StoryTask[];
   deck: VoteValue[];
   revealed: boolean;
+  isAnonymous?: boolean;
   hostId: string;
   updatedAt: number;
   players: Record<string, Player>;
@@ -197,7 +198,9 @@ export type RelayToClientMessage =
  * mantendo apenas `hasVoted: boolean` para a UI exibir a carta virada na mesa.
  */
 export function maskRoomState(rawState: RoomState): RoomState {
-  if (rawState.revealed) {
+  const isAnon = Boolean(rawState.isAnonymous);
+
+  if (rawState.revealed && !isAnon) {
     return rawState;
   }
 
@@ -205,8 +208,9 @@ export function maskRoomState(rawState: RoomState): RoomState {
   for (const [id, player] of Object.entries(rawState.players)) {
     maskedPlayers[id] = {
       ...player,
+      name: isAnon ? 'Anônimo' : player.name,
       hasVoted: player.vote !== null,
-      vote: null,
+      vote: rawState.revealed ? player.vote : null,
     };
   }
 

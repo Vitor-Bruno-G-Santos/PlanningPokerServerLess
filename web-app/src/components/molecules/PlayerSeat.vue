@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { Player } from '@shared/types';
 import PlayingCard from '@/components/atoms/PlayingCard.vue';
-import UserAvatar from '@/components/atoms/UserAvatar.vue';
 
 interface Props {
   player: Player;
@@ -41,15 +40,8 @@ withDefaults(defineProps<Props>(), {
       />
     </div>
 
-    <!-- Avatar + Nome + Tag Você -->
+    <!-- Nome + Tag Você -->
     <div class="flex flex-col items-center gap-1">
-      <UserAvatar
-        size="sm"
-        :name="player.name"
-        :is-host="player.isHost"
-        :is-spectator="player.isSpectator"
-        :connected="player.connected"
-      />
       <div class="flex items-center gap-1 max-w-[110px]">
         <span
           class="text-xs font-semibold truncate"

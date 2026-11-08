@@ -190,6 +190,7 @@ function handleConfirmAddTask() {
           :story-title="roomState?.storyTitle ?? 'Carregando sala...'"
           :is-host="isHost"
           :revealed="roomState?.revealed ?? false"
+          :is-anonymous="roomState?.isAnonymous ?? false"
           :total-voted="stats.totalVoted"
           :total-active-players="stats.totalActivePlayers"
           :active-players="activePlayers"
@@ -208,6 +209,7 @@ function handleConfirmAddTask() {
       <ResultsPanel
         :stats="stats"
         :revealed="roomState?.revealed ?? false"
+        :is-anonymous="roomState?.isAnonymous ?? false"
       />
     </template>
 
@@ -217,6 +219,7 @@ function handleConfirmAddTask() {
         :current-player-id="playerId"
         :revealed="roomState?.revealed ?? false"
         :is-host="isHost"
+        :is-anonymous="roomState?.isAnonymous ?? false"
         :total-voted="stats.totalVoted"
         :total-active-players="stats.totalActivePlayers"
         :has-next-pending-task="hasNextPendingTask"

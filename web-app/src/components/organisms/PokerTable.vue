@@ -7,12 +7,14 @@ interface Props {
   currentPlayerId: string;
   revealed: boolean;
   isHost: boolean;
+  isAnonymous?: boolean;
   totalVoted?: number;
   totalActivePlayers?: number;
   hasNextPendingTask?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  isAnonymous: false,
   totalVoted: 0,
   totalActivePlayers: 0,
   hasNextPendingTask: false,
@@ -26,19 +28,15 @@ const activeVoters = computed(() =>
   props.players.filter((player) => !player.isSpectator)
 );
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '??';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
-
 function getSlotTag(player: Player): {
   label: string;
   isSelf: boolean;
   isHostBadge: boolean;
 } | null {
   const isSelf = player.id === props.currentPlayerId;
+  if (props.isAnonymous) {
+    return isSelf ? { label: 'VOCÊ', isSelf: true, isHostBadge: false } : null;
+  }
   if (isSelf && player.isHost) {
     return { label: 'VOCÊ • HOST', isSelf: true, isHostBadge: false };
   }
@@ -87,7 +85,7 @@ function getCardStateClass(player: Player): string {
         class="voter-slot"
         :class="{
           'is-self': voter.id === currentPlayerId,
-          'is-host-peer': voter.isHost && voter.id !== currentPlayerId,
+          'is-host-peer': !isAnonymous && voter.isHost && voter.id !== currentPlayerId,
           'is-disconnected': !voter.connected,
         }"
       >
@@ -117,11 +115,16 @@ function getCardStateClass(player: Player): string {
           </template>
         </div>
 
-        <!-- Identificação do Participante -->
-        <div class="voter-identity">
+        <!-- Identificação do Participante (oculta em salas anônimas) -->
+        <div
+          v-if="!isAnonymous"
+          class="voter-identity"
+        >
           <div class="voter-name-row">
-            <span class="voter-avatar">{{ getInitials(voter.name) }}</span>
-            <span class="voter-name">{{ voter.name }}</span>
+            <span
+              class="voter-name"
+              :title="voter.name"
+            >{{ voter.name }}</span>
           </div>
           <span
             class="voter-status"
@@ -326,24 +329,7 @@ function getCardStateClass(player: Player): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   width: 100%;
-}
-
-.voter-avatar {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--secondary-soft);
-  border: 1px solid var(--secondary);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
 }
 
 .voter-name {
@@ -353,7 +339,7 @@ function getCardStateClass(player: Player): string {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 88px;
+  max-width: 100%;
 }
 
 .voter-status {

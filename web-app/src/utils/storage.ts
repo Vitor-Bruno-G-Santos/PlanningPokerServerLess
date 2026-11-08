@@ -127,6 +127,11 @@ export function markJoinedRoom(roomId: string): void {
   sessionStorage.setItem(`${JOINED_ROOM_PREFIX}${roomId.toUpperCase()}`, 'true');
 }
 
+export function clearJoinedRoom(roomId: string): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem(`${JOINED_ROOM_PREFIX}${roomId.toUpperCase()}`);
+}
+
 /**
  * Salva ou gera o token secreto do Host no localStorage para autenticar no Durable Object.
  */

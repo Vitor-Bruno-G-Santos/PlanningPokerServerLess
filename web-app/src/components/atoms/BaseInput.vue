@@ -9,6 +9,7 @@ interface Props {
   autofocus?: boolean;
   error?: string;
   mono?: boolean;
+  required?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
@@ -20,6 +21,7 @@ withDefaults(defineProps<Props>(), {
   autofocus: false,
   error: '',
   mono: false,
+  required: false,
 });
 
 const emit = defineEmits<{
@@ -41,7 +43,11 @@ function onInput(event: Event) {
       class="text-xs font-semibold uppercase tracking-wider"
       style="color: var(--text-secondary);"
     >
-      {{ label }}
+      {{ label }}<span
+        v-if="required"
+        class="ml-1"
+        style="color: var(--danger);"
+      >*</span>
     </label>
     <input
       :id="id"
@@ -56,7 +62,13 @@ function onInput(event: Event) {
       @input="onInput"
       @keydown.enter="emit('enter')"
     />
-    <p v-if="error" class="text-xs text-rose-500 font-medium">{{ error }}</p>
+    <p
+      v-if="error"
+      class="text-xs font-medium"
+      style="color: var(--danger);"
+    >
+      {{ error }}
+    </p>
   </div>
 </template>
 

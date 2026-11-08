@@ -12,6 +12,7 @@ import { useTheme } from '@/composables/useTheme';
 import {
   claimHostTabLock,
   clearHostRoomState,
+  clearJoinedRoom,
   generateRoomCode,
   getOrCreateHostToken,
   getOrCreatePlayerId,
@@ -37,10 +38,9 @@ const router = useRouter();
 const { theme, toggleTheme } = useTheme();
 
 const hostName = ref(getSavedPlayerName());
-const sessionName = ref('Sprint 42: Checkout Pix');
-const initialTasksText = ref(
-  'US-104: Checkout Pix com QR Code dinâmico\nUS-105: Webhook de confirmação de pagamento\nUS-106: Conciliação automática no painel'
-);
+const isAnonymousRoom = ref(false);
+const sessionName = ref('');
+const initialTasksText = ref('');
 
 const customDecks = ref<CustomDeck[]>(loadCustomDecks());
 const selectedDeckId = ref<string>(
@@ -65,6 +65,8 @@ const joinName = ref(getSavedPlayerName());
 const roomCodeInput = ref('');
 const joinAsSpectator = ref(getSavedSpectatorFlag());
 const createError = ref('');
+const sessionNameError = ref('');
+const tasksListError = ref('');
 const joinError = ref('');
 
 const savedHostRooms = ref<RoomState[]>([]);
@@ -130,25 +132,35 @@ onMounted(() => {
 });
 
 function handleCreateRoom() {
-  const cleanName = hostName.value.trim();
-  if (!cleanName) {
-    createError.value = 'Informe seu nome para criar a sala como Host.';
-    return;
-  }
-  createError.value = '';
-
-  const roomId = generateRoomCode(6);
-  const playerId = getOrCreatePlayerId();
-  savePlayerName(cleanName);
-  saveSpectatorFlag(false);
-
+  const cleanName = isAnonymousRoom.value ? 'Anônimo' : hostName.value.trim();
+  const cleanSession = sessionName.value.trim();
   const lines = initialTasksText.value
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  const defaultTitle = sessionName.value.trim() || 'US-01: Definir estimativa da história';
-  const taskTitles = lines.length > 0 ? lines : [defaultTitle];
+  createError.value =
+    !isAnonymousRoom.value && !cleanName
+      ? 'Preenchimento obrigatório.'
+      : '';
+  sessionNameError.value = !cleanSession
+    ? 'Preenchimento obrigatório.'
+    : '';
+  tasksListError.value =
+    lines.length === 0 ? 'Preenchimento obrigatório.' : '';
+
+  if (createError.value || sessionNameError.value || tasksListError.value) {
+    return;
+  }
+
+  const roomId = generateRoomCode(6);
+  const playerId = getOrCreatePlayerId();
+  if (!isAnonymousRoom.value) {
+    savePlayerName(cleanName);
+  }
+  saveSpectatorFlag(false);
+
+  const taskTitles = lines;
 
   const tasks: StoryTask[] = taskTitles.map((title, idx) => ({
     id: crypto.randomUUID(),
@@ -167,6 +179,7 @@ function handleCreateRoom() {
     tasks,
     deck,
     revealed: false,
+    isAnonymous: isAnonymousRoom.value,
     hostId: playerId,
     updatedAt: Date.now(),
     players: {
@@ -215,15 +228,16 @@ function handleJoinRoom() {
     joinError.value = 'Digite o código da sala.';
     return;
   }
-  if (!cleanName) {
-    joinError.value = 'Digite seu nome para entrar.';
-    return;
-  }
 
   joinError.value = '';
-  savePlayerName(cleanName);
   saveSpectatorFlag(joinAsSpectator.value);
-  markJoinedRoom(cleanCode);
+
+  if (cleanName) {
+    savePlayerName(cleanName);
+    markJoinedRoom(cleanCode);
+  } else {
+    clearJoinedRoom(cleanCode);
+  }
 
   router.push({
     name: 'room',
@@ -336,13 +350,19 @@ function handleJoinRoom() {
               class="flex flex-col gap-4"
               @submit.prevent="handleCreateRoom"
             >
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div
+                class="grid grid-cols-1 gap-3.5"
+                :class="{ 'sm:grid-cols-2': !isAnonymousRoom }"
+              >
                 <BaseInput
+                  v-if="!isAnonymousRoom"
                   id="create-host-name"
                   v-model="hostName"
                   label="Seu Nome (Host)"
                   placeholder="Ex: Vitor Bruno"
+                  required
                   :error="createError"
+                  @update:model-value="createError = ''"
                 />
 
                 <BaseInput
@@ -350,8 +370,46 @@ function handleJoinRoom() {
                   v-model="sessionName"
                   label="Nome da Sprint / Sessão"
                   placeholder="Ex: Sprint 42: Checkout Pix"
+                  required
+                  :error="sessionNameError"
+                  @update:model-value="sessionNameError = ''"
                 />
               </div>
+
+              <!-- Checkbox Sala Anônima -->
+              <label
+                for="create-anonymous-room"
+                class="ds-checkbox-row w-full flex items-center gap-3 px-3.5 py-2.5 text-xs cursor-pointer select-none transition-colors"
+              >
+                <input
+                  id="create-anonymous-room"
+                  v-model="isAnonymousRoom"
+                  type="checkbox"
+                  class="sr-only"
+                />
+                <span
+                  class="ds-checkbox-box"
+                  :class="{ checked: isAnonymousRoom }"
+                  aria-hidden="true"
+                >
+                  <svg
+                    v-if="isAnonymousRoom"
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3.2"
+                    stroke-linecap="square"
+                    stroke-linejoin="miter"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </span>
+                <span>
+                  Sala anônima (não exibe nomes dos participantes nem pede nome ao entrar)
+                </span>
+              </label>
 
               <!-- Sistema de Voto (Baralho da Sala) -->
               <div class="flex flex-col gap-2">
@@ -465,7 +523,10 @@ function handleJoinRoom() {
                     class="text-xs font-semibold uppercase tracking-wider"
                     style="color: var(--text-secondary);"
                   >
-                    Lista de Tasks para Votação (1 por linha)
+                    Lista de Tasks para Votação (1 por linha)<span
+                      class="ml-1"
+                      style="color: var(--danger);"
+                    >*</span>
                   </label>
                   <span
                     class="text-[11px] uppercase"
@@ -481,7 +542,15 @@ function handleJoinRoom() {
                   rows="3"
                   placeholder="US-104: Checkout Pix com QR Code dinâmico&#10;US-105: Webhook de confirmação de pagamento"
                   class="ds-textarea w-full px-3.5 py-2.5 text-xs focus:outline-none resize-none"
+                  @input="tasksListError = ''"
                 />
+                <p
+                  v-if="tasksListError"
+                  class="text-xs font-medium"
+                  style="color: var(--danger);"
+                >
+                  {{ tasksListError }}
+                </p>
               </div>
             </form>
           </div>
@@ -547,14 +616,14 @@ function handleJoinRoom() {
                   placeholder="A7K9X2"
                   :maxlength="12"
                   mono
+                  :error="joinError"
                 />
 
                 <BaseInput
                   id="join-player-name-lobby"
                   v-model="joinName"
-                  label="Seu Nome na Mesa"
+                  label="Seu Nome na Mesa (opcional em salas anônimas)"
                   placeholder="Ex: Gustavo Villa"
-                  :error="joinError"
                 />
 
                 <!-- Toggle Espectador -->
@@ -591,7 +660,7 @@ function handleJoinRoom() {
               <BaseButton
                 type="submit"
                 form="join-room-form"
-                variant="secondary"
+                variant="primary"
                 size="lg"
                 full-width
               >
@@ -734,6 +803,36 @@ function handleJoinRoom() {
 .ds-textarea:focus {
   border-color: var(--secondary);
   box-shadow: 0 0 0 2px var(--secondary-soft);
+}
+
+.ds-checkbox-row {
+  background-color: var(--surface-subtle);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.ds-checkbox-row:hover {
+  border-color: var(--secondary);
+}
+
+.ds-checkbox-box {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background-color: var(--surface-input);
+  border: 1.5px solid var(--border-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.ds-checkbox-box.checked {
+  background-color: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
 }
 
 .mini-poker-card {

@@ -177,7 +177,9 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
       if (hydrated.players[playerId]) {
         hydrated.players[playerId].connected = true;
-        if (hostDisplayName) {
+        if (hydrated.isAnonymous) {
+          hydrated.players[playerId].name = 'Anônimo';
+        } else if (hostDisplayName) {
           hydrated.players[playerId].name = hostDisplayName;
         }
         if (hydrated.players[playerId].vote !== null && myVote.value === null) {
@@ -187,7 +189,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       } else {
         hydrated.players[playerId] = {
           id: playerId,
-          name: hostDisplayName || 'Host',
+          name: hydrated.isAnonymous ? 'Anônimo' : hostDisplayName || 'Host',
           isSpectator: spectator,
           isHost: true,
           connected: true,
@@ -325,7 +327,9 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
     switch (payload.action) {
       case 'JOIN': {
         const existing = state.players[payload.playerId];
-        const cleanName = payload.name.trim() || 'Participante';
+        const cleanName = state.isAnonymous
+          ? 'Anônimo'
+          : payload.name.trim() || 'Participante';
         state.players[payload.playerId] = {
           id: payload.playerId,
           name: cleanName,
@@ -366,7 +370,7 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
       case 'UPDATE_NAME': {
         const player = state.players[payload.playerId];
-        if (!player) return;
+        if (!player || state.isAnonymous) return;
         const cleanName = payload.name.trim();
         if (cleanName) {
           player.name = cleanName;
@@ -423,6 +427,29 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
         }
 
         const meInRoom = msg.state.players[playerId];
+        if (
+          !isHost.value &&
+          msg.state.isAnonymous &&
+          (!joinedThisSession.value || !meInRoom || !meInRoom.connected)
+        ) {
+          joinedThisSession.value = true;
+          markJoinedRoom(normalizedRoomId);
+          dispatchPlayerAction({
+            action: 'JOIN',
+            playerId,
+            name: 'Anônimo',
+            isSpectator: isSpectator.value,
+          });
+          if (myVote.value !== null && !isSpectator.value) {
+            dispatchPlayerAction({
+              action: 'CAST_VOTE',
+              playerId,
+              vote: myVote.value,
+            });
+          }
+          break;
+        }
+
         if (meInRoom && !meInRoom.hasVoted && !msg.state.revealed) {
           myVote.value = null;
           saveOwnVote(normalizedRoomId, playerId, null);
@@ -471,11 +498,16 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
       case 'HOST_RECONNECTED': {
         hostOnline.value = true;
         lastError.value = null;
-        if (!isHost.value && playerName.value) {
+        const isAnon = Boolean(publicRoomState.value?.isAnonymous);
+        if (!isHost.value && (isAnon || playerName.value)) {
+          if (isAnon) {
+            joinedThisSession.value = true;
+            markJoinedRoom(normalizedRoomId);
+          }
           dispatchPlayerAction({
             action: 'JOIN',
             playerId,
-            name: playerName.value,
+            name: isAnon ? 'Anônimo' : playerName.value,
             isSpectator: isSpectator.value,
           });
           if (myVote.value !== null && !isSpectator.value) {
@@ -852,6 +884,12 @@ export function usePokerRoom(options: UsePokerRoomOptions) {
 
   const needsNamePrompt = computed(() => {
     if (isHost.value) {
+      return false;
+    }
+    if (!publicRoomState.value) {
+      return false;
+    }
+    if (publicRoomState.value.isAnonymous) {
       return false;
     }
     return !joinedThisSession.value || !playerName.value || playerName.value.trim().length === 0;

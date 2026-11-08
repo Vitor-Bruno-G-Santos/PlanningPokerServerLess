@@ -4,9 +4,12 @@ import type { PokerStats } from '@/composables/usePokerStats';
 interface Props {
   stats: PokerStats;
   revealed: boolean;
+  isAnonymous?: boolean;
 }
 
-defineProps<Props>();
+withDefaults(defineProps<Props>(), {
+  isAnonymous: false,
+});
 </script>
 
 <template>
@@ -51,7 +54,7 @@ defineProps<Props>();
           <div
             class="column-card-chip"
             :class="{ majority: item.isMajority }"
-            :title="`Votado por: ${item.voters.join(', ')}`"
+            :title="isAnonymous ? undefined : `Votado por: ${item.voters.join(', ')}`"
           >
             {{ item.value }}
           </div>
